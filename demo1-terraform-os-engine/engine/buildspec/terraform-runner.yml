@@ -1,0 +1,92 @@
+version: 0.2
+env:
+  shell: bash
+phases:
+  install:
+    commands:
+      - |
+        set -euo pipefail
+        echo "== Instalando Terraform ${TF_VERSION} =="
+        curl -fsSL -o /tmp/terraform.zip \
+          "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+        unzip -oq /tmp/terraform.zip -d /usr/local/bin
+        chmod +x /usr/local/bin/terraform
+        terraform version
+        command -v jq >/dev/null || { apt-get update -qq && apt-get install -y -qq jq; }
+  build:
+    commands:
+      - |
+        set -euo pipefail
+
+        : "${ACTION:?}" "${PP_DESCRIPTOR:?}" "${LAUNCH_ROLE_ARN:?}" "${TF_STATE_BUCKET:?}"
+        export AWS_DEFAULT_REGION="${AWS_REGION}"
+
+        # Normalizar los JSON opcionales que inyecta la Step Function
+        [ -z "${TRACER_TAG_JSON:-}" ] && TRACER_TAG_JSON='{}'
+        [ -z "${TAGS_JSON:-}" ] && TAGS_JSON='[]'
+        [ -z "${ARTIFACT_PARAMETERS:-}" ] && ARTIFACT_PARAMETERS='[]'
+
+        WORKSPACE_DIR="/tmp/workspaces/${PP_DESCRIPTOR}"
+        rm -rf "${WORKSPACE_DIR}"
+        mkdir -p "${WORKSPACE_DIR}"
+        cd "${WORKSPACE_DIR}"
+        echo "== Workspace: ${WORKSPACE_DIR} | accion: ${ACTION} =="
+
+        # --- backend_override.tf.json ---------------------------------
+        jq -n --arg b "${TF_STATE_BUCKET}" --arg k "${PP_DESCRIPTOR}" --arg r "${AWS_REGION}" \
+          '{terraform:{backend:{s3:{bucket:$b,key:$k,region:$r}}}}' \
+          > backend_override.tf.json
+
+        # --- provider_override.tf.json --------------------------------
+        # session_name: primeros 64 caracteres del descriptor, con '/' -> '-'
+        SESSION_NAME="$(printf '%s' "${PP_DESCRIPTOR:0:64}" | tr '/' '-')"
+        ALL_TAGS="$(jq -n --argjson t "${TRACER_TAG_JSON}" --argjson g "${TAGS_JSON}" \
+          'if ($t|length)>0 then [$t]+$g else $g end')"
+        jq -n --arg r "${AWS_REGION}" --arg role "${LAUNCH_ROLE_ARN}" --arg sn "${SESSION_NAME}" \
+           --argjson tags "${ALL_TAGS}" \
+          '{provider:{aws:{region:$r,
+                           assume_role:{role_arn:$role,session_name:$sn},
+                           default_tags:{tags:(($tags|map({(.key):.value})|add) // {})}}}}' \
+          > provider_override.tf.json
+
+        if [ "${ACTION}" = "apply" ]; then
+          : "${ARTIFACT_PATH:?}"
+          echo "== Descargando artefacto ${ARTIFACT_PATH} con el launch role =="
+          CREDS="$(aws sts assume-role --role-arn "${LAUNCH_ROLE_ARN}" \
+                    --role-session-name TerraformLaunchRole --query Credentials --output json)"
+          AWS_ACCESS_KEY_ID="$(jq -r .AccessKeyId <<<"${CREDS}")" \
+          AWS_SECRET_ACCESS_KEY="$(jq -r .SecretAccessKey <<<"${CREDS}")" \
+          AWS_SESSION_TOKEN="$(jq -r .SessionToken <<<"${CREDS}")" \
+            aws s3 cp "${ARTIFACT_PATH}" "${WORKSPACE_DIR}/artifact.local"
+          unset CREDS
+
+          tar -xf artifact.local -C "${WORKSPACE_DIR}"
+          rm -f artifact.local
+          if ! compgen -G "${WORKSPACE_DIR}/*.tf" > /dev/null; then
+            echo "No .tf files found. Nothing to parse. Make sure the root directory of the Terraform open source configuration file contains the .tf files for the root module." >&2
+            exit 1
+          fi
+
+          # --- variable_override.tf.json ------------------------------
+          if [ "$(jq 'length' <<<"${ARTIFACT_PARAMETERS}")" -gt 0 ]; then
+            jq -n --argjson p "${ARTIFACT_PARAMETERS}" \
+              '{variable: ($p | map({(.key): {default: ((.value|fromjson?) // .value)}}) | add)}' \
+              > variable_override.tf.json
+          fi
+        fi
+
+        echo "== Overrides generados =="
+        for f in backend_override.tf.json provider_override.tf.json variable_override.tf.json; do
+          [ -f "$f" ] && { echo "--- $f"; jq . "$f"; }
+        done
+
+        terraform init -no-color
+        terraform validate -no-color
+        if [ "${ACTION}" = "apply" ]; then
+          terraform apply -auto-approve -input=false -compact-warnings -no-color
+        else
+          terraform destroy -auto-approve -no-color
+        fi
+  post_build:
+    commands:
+      - rm -rf "/tmp/workspaces/${PP_DESCRIPTOR}" || true

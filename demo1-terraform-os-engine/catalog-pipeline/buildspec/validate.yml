@@ -1,0 +1,47 @@
+version: 0.2
+env:
+  shell: bash
+phases:
+  install:
+    commands:
+      - |
+        set -euo pipefail
+        curl -fsSL -o /tmp/terraform.zip \
+          "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+        unzip -oq /tmp/terraform.zip -d /usr/local/bin
+        terraform version
+  build:
+    commands:
+      - |
+        set -euo pipefail
+        test -d "${MODULE_PATH}" || { echo "No existe la ruta del modulo: ${MODULE_PATH}" >&2; exit 1; }
+
+        pushd "${MODULE_PATH}" > /dev/null
+        echo "== terraform fmt -check =="
+        terraform fmt -check -recursive -no-color
+
+        echo "== terraform init (sin backend) =="
+        terraform init -backend=false -input=false -no-color
+
+        echo "== terraform validate =="
+        terraform validate -no-color
+        popd > /dev/null
+
+        echo "== Empaquetando artefacto con los .tf en la raiz =="
+        tar czf "${CODEBUILD_SRC_DIR}/product.tar.gz" \
+            --exclude='.terraform' --exclude='.terraform.lock.hcl' --exclude='terraform.tfstate*' \
+            -C "${MODULE_PATH}" .
+
+        echo "== Contenido del artefacto =="
+        tar tzf "${CODEBUILD_SRC_DIR}/product.tar.gz"
+
+        # El parameter parser exige los .tf en la raiz del tar, no en un subdirectorio
+        tar tzf "${CODEBUILD_SRC_DIR}/product.tar.gz" | grep -qE '^\./[^/]+\.tf$' \
+          || { echo "ERROR: no hay .tf en la raiz del artefacto" >&2; exit 1; }
+
+        echo "${CODEBUILD_RESOLVED_SOURCE_VERSION:-manual}" > "${CODEBUILD_SRC_DIR}/source_version.txt"
+artifacts:
+  files:
+    - product.tar.gz
+    - source_version.txt
+  discard-paths: yes

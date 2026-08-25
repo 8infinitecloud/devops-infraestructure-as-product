@@ -1,0 +1,53 @@
+# --- Secretos: nunca versionar -------------------------------------------
+*.tfvars.secret
+.env
+*.pem
+credentials.tfrc.json
+
+# --- Terraform ------------------------------------------------------------
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# --- SAM / AWS ------------------------------------------------------------
+.aws-sam/
+packaged.yaml
+samconfig-*.toml
+
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# --- Go -------------------------------------------------------------------
+bootstrap
+*.test
+
+# --- Artefactos de build --------------------------------------------------
+# Los genera `make bin`; se reconstruyen en cada maquina, no se versionan.
+lambda-functions/build/
+**/lambda-functions/build/
+.build/
+**/.build/
+*.tar.gz
+!demo2-hcp-terraform-engine/engine/example-product/product.tar.gz
+dist/*.whl
+
+# --- SO / editor ----------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+
+# Planes guardados y binarios compilados sueltos
+tfplan
+*.tfplan
+demo2-hcp-terraform-engine/engine/engine/lambda-functions/send-apply/send-apply

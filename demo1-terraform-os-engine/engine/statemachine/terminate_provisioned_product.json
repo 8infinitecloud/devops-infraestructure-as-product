@@ -1,0 +1,175 @@
+{
+  "Comment": "A state machine that terminates a provisioned product",
+  "StartAt": "Run Terraform destroy",
+  "States": {
+    "Run Terraform destroy": {
+      "Type": "Task",
+      "Comment": "Ejecuta terraform destroy dentro de CodeBuild y espera sincronamente (.sync).",
+      "Resource": "${CodeBuildStartBuildSyncArn}",
+      "Parameters": {
+        "ProjectName": "${TerraformRunnerProjectName}",
+        "EnvironmentVariablesOverride": [
+          {
+            "Name": "ACTION",
+            "Type": "PLAINTEXT",
+            "Value": "destroy"
+          },
+          {
+            "Name": "PP_DESCRIPTOR",
+            "Type": "PLAINTEXT",
+            "Value.$": "States.Format('{}/{}', $.identity.awsAccountId, $.provisionedProductId)"
+          },
+          {
+            "Name": "LAUNCH_ROLE_ARN",
+            "Type": "PLAINTEXT",
+            "Value.$": "$.launchRoleArn"
+          }
+        ]
+      },
+      "ResultSelector": {
+        "buildId.$": "$.Build.Id",
+        "buildArn.$": "$.Build.Arn",
+        "buildStatus.$": "$.Build.BuildStatus",
+        "logsDeepLink.$": "$.Build.Logs.DeepLink"
+      },
+      "ResultPath": "$.terraformRunnerResponse",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "CodeBuild.AWSCodeBuildException",
+            "CodeBuild.ClientException",
+            "States.TaskFailed.Service"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.codeBuildError",
+          "Next": "Convert error structure"
+        }
+      ],
+      "Next": "Notify terminate success result"
+    },
+    "Convert error structure": {
+      "Type": "Pass",
+      "Comment": "Reestructura el error de CodeBuild al formato que espera la tarea Notify de Service Catalog",
+      "Parameters": {
+        "Error": "Error running terraform-runner script",
+        "Cause.$": "States.Format('CodeBuild ejecuto terraform y fallo: {}', $.codeBuildError.Cause)",
+        "isWrapperError": true
+      },
+      "ResultPath": "$.errorInfo",
+      "Next": "Notify terminate failure result"
+    },
+    "Notify terminate success result": {
+      "Type": "Task",
+      "Comment": "Sends back success results of Terraform terminate back to Service Catalog",
+      "Resource": "${LambdaInvokeArn}",
+      "Parameters": {
+        "FunctionName": "${NotifyTerminateResultFunctionArn}",
+        "Payload": {
+          "token.$": "$.token",
+          "awsAccountId.$": "$.identity.awsAccountId",
+          "provisionedProductId.$": "$.provisionedProductId",
+          "provisionedProductName.$": "$.provisionedProductName",
+          "recordId.$": "$.recordId"
+        },
+        "InvocationType": "RequestResponse"
+      },
+      "ResultSelector": {
+        "lambdaExecutionRequestId.$": "$.SdkHttpMetadata.HttpHeaders.x-amzn-RequestId",
+        "xRayTraceId.$": "$.SdkHttpMetadata.HttpHeaders.X-Amzn-Trace-Id",
+        "httpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
+      },
+      "ResultPath": "$.notifyTerminateResultResponse",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "TimeoutSeconds": 300,
+      "Next": "Succeeded"
+    },
+    "Notify terminate failure result": {
+      "Type": "Task",
+      "Comment": "Sends failure results of Terraform terminate to Service Catalog",
+      "Resource": "${LambdaInvokeArn}",
+      "Parameters": {
+        "FunctionName": "${NotifyTerminateResultFunctionArn}",
+        "Payload": {
+          "token.$": "$.token",
+          "awsAccountId.$": "$.identity.awsAccountId",
+          "provisionedProductId.$": "$.provisionedProductId",
+          "provisionedProductName.$": "$.provisionedProductName",
+          "recordId.$": "$.recordId",
+          "error.$": "$.errorInfo.Error",
+          "errorMessage.$": "$.errorInfo.Cause"
+        },
+        "InvocationType": "RequestResponse"
+      },
+      "ResultSelector": {
+        "lambdaExecutionRequestId.$": "$.SdkHttpMetadata.HttpHeaders.x-amzn-RequestId",
+        "xRayTraceId.$": "$.SdkHttpMetadata.HttpHeaders.X-Amzn-Trace-Id",
+        "httpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
+      },
+      "ResultPath": "$.notifyTerminateResultResponse",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "TimeoutSeconds": 300,
+      "Next": "Is error source Terraform wrapper?"
+    },
+    "Is error source Terraform wrapper?": {
+      "Type": "Choice",
+      "Comment": "Looks up if the error cause based on Terraform wrapper or not and sets the state machine terminal status accordingly",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.errorInfo.isWrapperError",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.errorInfo.isWrapperError",
+              "IsBoolean": true
+            },
+            {
+              "Variable": "$.errorInfo.isWrapperError",
+              "BooleanEquals": true
+            }
+          ],
+          "Next": "Succeeded"
+        }
+      ],
+      "Default": "Failed"
+    },
+    "Succeeded": {
+      "Type": "Succeed"
+    },
+    "Failed": {
+      "Type": "Fail"
+    }
+  }
+}
