@@ -1,4 +1,13 @@
-# --- Rol compartido por los dos proyectos de CodeBuild -----------------------
+locals {
+  # Todos los proyectos de CodeBuild que la pipeline debe poder arrancar.
+  codebuild_projects = {
+    validate = aws_codebuild_project.validate
+    inspect  = aws_codebuild_project.inspect
+    publish  = aws_codebuild_project.publish
+  }
+}
+
+# --- Rol compartido por los proyectos de CodeBuild ---------------------------
 
 data "aws_iam_policy_document" "codebuild_assume_role" {
   statement {
@@ -27,6 +36,22 @@ resource "aws_iam_role_policy" "codebuild" {
         Effect   = "Allow"
         Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = "arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:/aws/codebuild/${var.name_prefix}-*"
+      },
+      {
+        # La seccion `reports:` del buildspec crea report groups para que
+        # Checkov y TFLint se vean como reportes nativos en la consola.
+        # Sin estos permisos la fase UPLOAD_ARTIFACTS falla DESPUES de que el
+        # build haya pasado, que despista bastante al diagnosticar.
+        Sid    = "TestReports"
+        Effect = "Allow"
+        Action = [
+          "codebuild:CreateReportGroup",
+          "codebuild:CreateReport",
+          "codebuild:UpdateReport",
+          "codebuild:BatchPutTestCases",
+          "codebuild:BatchPutCodeCoverages",
+        ]
+        Resource = "arn:${local.partition}:codebuild:${local.region}:${local.account_id}:report-group/${var.name_prefix}-*"
       },
       {
         Sid      = "Artifacts"
@@ -199,9 +224,11 @@ resource "aws_iam_role_policy" "pipeline" {
         Resource = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"]
       },
       {
-        Effect   = "Allow"
-        Action   = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"]
-        Resource = [aws_codebuild_project.validate.arn, aws_codebuild_project.publish.arn]
+        Effect = "Allow"
+        Action = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"]
+        # Se deriva de local.codebuild_projects para que anadir un proyecto no
+        # pueda olvidarse aqui: es justo el fallo que tuvo la etapa Inspect.
+        Resource = values(local.codebuild_projects)[*].arn
       },
       {
         Effect   = "Allow"
