@@ -35,7 +35,7 @@ nativa con el Go local) y las Python compilan contra el `python3.13` del sistema
 `origin` de ambos clones apuntaba al upstream (`aws-samples/…`, `hashicorp/…`) y la cuenta no
 tenía fork de ninguno. Confirmado por el usuario: *"no son forks, solo los clone y hice cambios locales"*.
 
-**Decisión:** los clones son solo material fuente. Los demos se construyen en este repo
+**Decisión:** los clones son solo material fuente. Los hands-on se construyen en este repo
 (`8infinitecloud/devops-infraestructure-as-product`). **Los clones se devolvieron intactos**
 a su estado original — verificado: solo quedan los 2 archivos que el usuario ya tenía
 modificados (`template.yaml`, `bin/bash/deploy-tre.sh`, migración py3.9 → py3.13).
@@ -71,13 +71,13 @@ El token llegó por chat en texto plano. Colocado en tres sitios según su uso, 
 
 ---
 
-## 3. Demo 1 — de SAM/CloudFormation a Terraform puro
+## 3. Hands-on 1 — de SAM/CloudFormation a Terraform puro
 
 ### 3.1 Por qué
 
-Las dos demos del taller usaban tooling distinto: la Demo 1 iba con SAM y la Demo 2 ya estaba en
-Terraform. Se reescribió la Demo 1 a Terraform para que el taller enseñe **un solo tooling de punta
-a punta** y la comparación entre motores sea limpia: lo único que cambia entre demos es el motor,
+Las dos hands-on del taller usaban tooling distinto: el Hands-on 1 iba con SAM y el Hands-on 2 ya estaba en
+Terraform. Se reescribió el Hands-on 1 a Terraform para que el taller enseñe **un solo tooling de punta
+a punta** y la comparación entre motores sea limpia: lo único que cambia entre hands-on es el motor,
 no la forma de desplegarlo.
 
 > Antes de retirar SAM se llegó a desplegar el stack de CloudFormation hasta `CREATE_COMPLETE`,
@@ -107,7 +107,7 @@ no la forma de desplegarlo.
 
 Terraform no compila nada: `data.archive_file` lee `lambda-functions/build/` **en tiempo de plan**.
 Por eso `make bin` va siempre antes de `terraform plan/apply` — el mismo patrón que ya usaba el
-motor de HashiCorp en la Demo 2.
+motor de HashiCorp en el Hands-on 2.
 
 ```makefile
 python:  # por cada Lambda: copia fuentes (sin tests) + pip install -r requirements.txt -t build/<name>
@@ -176,7 +176,7 @@ decodifica (`fromjson? // .value` en jq ≡ `json.loads` con fallback a string e
 
 ---
 
-## 5. Demo 1 — resultado de las pruebas E2E
+## 5. Hands-on 1 — resultado de las pruebas E2E
 
 | Prueba | Resultado |
 |---|---|
@@ -198,20 +198,20 @@ decodifica (`fromjson? // .value` en jq ≡ `json.loads` con fallback a string e
 
 ---
 
-## 6. Demo 2 — motor de HCP Terraform
+## 6. Hands-on 2 — motor de HCP Terraform
 
 ### 6.1 Qué se hizo
 
 Ya estaba en Terraform, así que no hubo traducción de tooling. El trabajo fue **alinear la
-estructura** a las mismas 4 carpetas de la Demo 1:
+estructura** a las mismas 4 carpetas del Hands-on 1:
 
 - `engine/` — el módulo de HashiCorp **sin cambios de arquitectura**. Se añadió únicamente
   un `outputs.tf` en el módulo raíz para re-exportar los ARNs que necesitan las otras carpetas.
 - `catalog-bootstrap/` — **no crea Portfolio**: reutiliza el "TFC Example Portfolio" que el propio
   motor crea al aplicar. Aporta solo el acceso al Portfolio y el Launch Role del producto
   `standard-environment`, que el motor no cubre (solo crea el de *su* producto de ejemplo).
-- `catalog-pipeline/` — mismo patrón que la Demo 1, publicando como `TERRAFORM_CLOUD`.
-- `catalog-modules/` — **no duplica el módulo**: un README apunta al de la Demo 1.
+- `catalog-pipeline/` — mismo patrón que el Hands-on 1, publicando como `TERRAFORM_CLOUD`.
+- `catalog-modules/` — **no duplica el módulo**: un README apunta al del Hands-on 1.
 
 ### 6.2 Decisión sobre el Launch Role y OIDC
 
@@ -230,7 +230,7 @@ producto en `catalog-bootstrap/` y que la pipeline solo añada versiones.
 
 Se despliega con el polling de `poll-run-status` tal y como viene. El diseño completo del
 reemplazo por webhooks (notification configurations con firma HMAC-SHA512 → API Gateway →
-`.waitForTaskToken`) está en `demo2-hcp-terraform-engine/MEJORA-PENDIENTE-webhook.md`,
+`.waitForTaskToken`) está en `hands-on/02-hcp-terraform/MEJORA-PENDIENTE-webhook.md`,
 con el alcance del cambio, por qué se pospuso y cómo se validaría.
 
 ### 6.4 Problema encontrado
@@ -252,7 +252,7 @@ de import queda documentada por si reaparece.
 | `terraform apply` catalog-bootstrap | 3 recursos. Reutiliza el portfolio `port-lefekjdiwz6q4` del motor |
 | `terraform apply` catalog-pipeline | 14 recursos |
 | Pipeline: Source / Build-Validate / Publish | **Succeeded las 3** — producto `prod-4xc5xszrhiriq`, versión `v20260825-130354-aa19bdb` |
-| `DescribeProvisioningParameters` | **OK** — el parser del motor de HashiCorp leyó **el mismo módulo** de la Demo 1 y extrajo las mismas 5 variables |
+| `DescribeProvisioningParameters` | **OK** — el parser del motor de HashiCorp leyó **el mismo módulo** del Hands-on 1 y extrajo las mismas 5 variables |
 | Aprovisionamiento | **AVAILABLE** |
 | Workspace en HCP Terraform | `058264353988-pp-znx2rcggrcgws`, Terraform 1.5.7, **16 recursos** |
 | Run en HCP Terraform | `run-sLdjvdgKerFciP8Z` → **applied** |
@@ -263,7 +263,7 @@ de import queda documentada por si reaparece.
 
 El mismo `standard-environment`, sin una línea distinta, aprovisionado por los dos motores:
 
-| | Demo 1 | Demo 2 |
+| | Hands-on 1 | Hands-on 2 |
 |---|---|---|
 | Ejecuta el apply | Contenedor de CodeBuild | Workspace de HCP Terraform |
 | State | S3 `sc-terraform-engine-state-…` | Workspace de HCP Terraform |
@@ -278,16 +278,16 @@ El mismo `standard-environment`, sin una línea distinta, aprovisionado por los 
 
 ### Orden seguido
 
-En ambas demos: **terminar el producto aprovisionado primero**. Si se destruye el motor
+En ambos hands-on: **terminar el producto aprovisionado primero**. Si se destruye el motor
 antes, no queda nada capaz de ejecutar el `destroy` y los recursos se quedan huérfanos.
 Después, el producto de Service Catalog (lo crea la pipeline por CLI, no Terraform:
 constraint → desasociar → `delete-product`). Y por último `terraform destroy` en orden
 inverso.
 
-| Demo | catalog-pipeline | catalog-bootstrap | engine | Total |
+| Hands-on | catalog-pipeline | catalog-bootstrap | engine | Total |
 |---|---|---|---|---|
-| Demo 1 | 14 | 4 | 87 | **105** |
-| Demo 2 | 14 | 3 | 96 | **113** |
+| Hands-on 1 | 14 | 4 | 87 | **105** |
+| Hands-on 2 | 14 | 3 | 96 | **113** |
 
 **218 recursos destruidos.** `terraform state list` devuelve 0 en las seis carpetas.
 
@@ -345,7 +345,7 @@ almacenado en:
 - `~/.config/aurex/tfe.env` (0600)
 - Secrets Manager `aurex/tfc/team-token`
 
-Ninguna de las dos pipelines acabó consumiéndolo: en la Demo 2 el token solo hace falta en
+Ninguna de las dos pipelines acabó consumiéndolo: en el Hands-on 2 el token solo hace falta en
 local, para que el provider `tfe` cree el team y el workspace durante el `apply`.
 
 ---
@@ -354,7 +354,7 @@ local, para que el provider `tfe` cree el team y el workspace durante el `apply`
 
 ### 8.1 Qué se arregló
 
-La estructura anterior (`demoN/{engine,catalog-bootstrap,catalog-pipeline,catalog-modules}`)
+La estructura anterior (`demoN/{engine,catalog-bootstrap,catalog-pipeline,catalog-modules}` (nomenclatura previa))
 tenía tres problemas que solo se ven al intentar reutilizarla:
 
 1. **`terraform_remote_state` con backend local.** `catalog-bootstrap` leía
@@ -363,11 +363,11 @@ tenía tres problemas que solo se ven al intentar reutilizarla:
    variables.
 2. **Bloques `provider` dentro de cada carpeta.** Impide pasarle a un módulo un provider
    distinto, que es exactamente lo que hace falta para multicuenta.
-3. **`catalog-pipeline` duplicada.** La de la Demo 2 era una copia con `sed` de la de la
-   Demo 1. Dos copias del mismo código se desincronizan.
+3. **`catalog-pipeline` duplicada.** La del Hands-on 2 era una copia con `sed` de la de la
+   Hands-on 1. Dos copias del mismo código se desincronizan.
 
 Estructura nueva: `modules/` (reutilizables, sin `provider` ni backend) + `live/` (un root
-por demo). Cada demo pasa a ser **un solo `apply`**, con el orden motor → bootstrap →
+por hands-on). Cada hands-on pasa a ser **un solo `apply`**, con el orden motor → bootstrap →
 pipeline resuelto por dependencias en vez de por el operador.
 
 `catalog-pipeline` queda como **un solo módulo** parametrizado por `product_type`:
@@ -394,7 +394,7 @@ Se detectó comparando los log groups existentes con los nombres de los proyecto
 
 | Prueba | Resultado |
 |---|---|
-| `terraform apply` de `live/demo1` | **105 recursos en un solo apply** |
+| `terraform apply` de `hands-on/01-terraform-os` | **105 recursos en un solo apply** |
 | Pipeline disparada por **`git push`** | **Succeeded**, `Trigger: Webhook` — cerraba el hueco que quedaba de la primera ronda |
 | Pipeline Source / Build-Validate / Publish | Succeeded las 3. Producto `prod-73m7z43g3mao2` |
 | Provision | **AVAILABLE**. VPC `10.60.0.0/16`, 2 subredes |
@@ -414,11 +414,11 @@ Tres cosas que conviene tener presentes antes de abordarlo:
 
 1. **Terraform no puede hacer `for_each` sobre un provider.** N cuentas son N root modules
    y N applies, orquestados desde CI. No se puede expresar en un solo apply.
-2. **La Demo 2 necesita un OIDC provider de `app.terraform.io` en cada cuenta spoke** — es
-   un recurso IAM por cuenta. La Demo 1 no tiene ese problema.
+2. **La Hands-on 2 necesita un OIDC provider de `app.terraform.io` en cada cuenta spoke** — es
+   un recurso IAM por cuenta. La Hands-on 1 no tiene ese problema.
 3. **Verificar primero** que los productos `EXTERNAL` y `TERRAFORM_CLOUD` se comparten
    entre cuentas vía portfolio share igual que los de CloudFormation. Si no, la premisa
-   hub-and-spoke para estas demos cambia de raíz. `servicecatalog
+   hub-and-spoke para estos hands-on cambia de raíz. `servicecatalog
    get-aws-organizations-access-status` está hoy en `DISABLED`.
 
 A favor: el motor ya está diseñado para ello. La clave del state es
@@ -426,13 +426,13 @@ A favor: el motor ya está diseñado para ello. La clave del state es
 tiene `sts:AssumeRole` sobre `arn:aws:iam::*:role/*`, y el backend S3 usa las credenciales
 del hub mientras el provider `aws` asume el Launch Role del spoke.
 
-### 8.6 Re-prueba E2E de la Demo 2 tras el refactor
+### 8.6 Re-prueba E2E del Hands-on 2 tras el refactor
 
 | Prueba | Resultado |
 |---|---|
-| `terraform apply` de `live/demo2` | **150 recursos en un solo apply** |
+| `terraform apply` de `hands-on/02-hcp-terraform` | **150 recursos en un solo apply** |
 | Pipeline Source / Build-Validate / Publish | Succeeded las 3. Producto `prod-abqplym55kees` |
-| `DescribeProvisioningParameters` | Las mismas 5 variables — el parser de HashiCorp sobre **el mismo módulo** de la Demo 1 |
+| `DescribeProvisioningParameters` | Las mismas 5 variables — el parser de HashiCorp sobre **el mismo módulo** del Hands-on 1 |
 | Provision | **AVAILABLE** |
 | Workspace en HCP Terraform | `058264353988-pp-u57rlssujjpz2`, 16 recursos, Terraform 1.5.7 |
 | Run | `run-S2w5datA3yo9UF4j` → **applied** |
@@ -447,7 +447,7 @@ defecto y así queda anotado junto al recurso.
 
 ### 8.7 Verificación final tras el refactor
 
-`terraform state list` devuelve **0** en `live/demo1` y `live/demo2`. Vacío en AWS:
+`terraform state list` devuelve **0** en `hands-on/01-terraform-os` y `hands-on/02-hcp-terraform`. Vacío en AWS:
 Lambdas, Step Functions, colas SQS, CodeBuild, CodePipeline, EC2, VPCs del módulo, buckets,
 roles y el secreto del motor. En HCP Terraform solo quedan los workspaces del usuario
 (`lab-*`, `dev`) y el team `owners`. El único OIDC provider es el de GitHub Actions.
@@ -489,7 +489,7 @@ shares, el producto, el portfolio, la OU y el bucket de prueba, y se devolvió
 
 | # | Hallazgo | Impacto |
 |---|---|---|
-| 1 | **Un solo motor EXTERNAL por cuenta hub.** `EXTERNAL` solo puede enrutar a un motor por cuenta | Restricción dura, sin rodeo. Dos motores EXTERNAL = dos cuentas hub. No afecta a tener las dos demos juntas: la Demo 2 usa `TERRAFORM_CLOUD`, otro tipo y otras colas |
+| 1 | **Un solo motor EXTERNAL por cuenta hub.** `EXTERNAL` solo puede enrutar a un motor por cuenta | Restricción dura, sin rodeo. Dos motores EXTERNAL = dos cuentas hub. No afecta a tener los dos hands-on juntas: el Hands-on 2 usa `TERRAFORM_CLOUD`, otro tipo y otras colas |
 | 2 | **El Launch Role debe existir en cada spoke con el MISMO nombre**, y el constraint debe usar `LocalRoleName` en vez de `RoleArn` | `modules/catalog-pipeline/buildspec/publish.yml` publica hoy `{"RoleArn": ...}`. Correcto en monocuenta; hay que cambiarlo para hub-and-spoke |
 | 3 | **Los nombres de Launch Role deben empezar por `SCLaunch`** | Los de este repo no lo cumplen. Funcionan porque el `iam:PassRole` se concede explícito, pero el prefijo importa para las políticas gestionadas de end-user |
 | 4 | AWS documenta la confianza del rol spoke como root del hub + condición `ArnLike` sobre `aws:PrincipalArn` | `catalog-bootstrap-hcp-terraform` ya usa esa forma; `catalog-bootstrap-terraform-os` usa ARN directos — equivalente en monocuenta, conviene alinearlo |

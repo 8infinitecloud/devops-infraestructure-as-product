@@ -23,7 +23,7 @@ variable "product_type" {
 
 variable "name_prefix" {
   type        = string
-  description = "Prefijo de los recursos. Permite que las dos demos convivan en la misma cuenta."
+  description = "Prefijo de los recursos. Permite que los dos hands-on convivan en la misma cuenta."
   default     = "aurex-catalog"
 }
 
@@ -72,7 +72,7 @@ variable "github_branch" {
 variable "module_source_path" {
   type        = string
   description = "Ruta dentro del repo donde viven los .tf del modulo a publicar"
-  default     = "demo1-terraform-os-engine/catalog-modules/standard-environment"
+  default     = "hands-on/01-terraform-os/catalog-modules/standard-environment"
 }
 
 variable "product_name" {

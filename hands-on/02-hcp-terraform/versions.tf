@@ -29,7 +29,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project = "aurex-infrastructure-as-a-product"
-      Demo    = "demo2-hcp-terraform"
+      HandsOn = "02-hcp-terraform"
     }
   }
 }

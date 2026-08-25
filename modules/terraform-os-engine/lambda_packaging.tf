@@ -8,7 +8,7 @@
 #     cd lambda-functions && make bin
 #
 # antes de terraform plan/apply. Es el mismo patron que usa el motor de HashiCorp
-# en la Demo 2.
+# en el Hands-on 2.
 # ---------------------------------------------------------------------------
 
 resource "terraform_data" "build_check" {

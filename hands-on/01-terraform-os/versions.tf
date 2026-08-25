@@ -5,7 +5,7 @@ terraform {
     aws = {
       source = "hashicorp/aws"
       # >= 5.55 por aws_codeconnections_connection. Se acota al major 5 para que
-      # las dos demos usen la misma familia de provider.
+      # los dos hands-on usen la misma familia de provider.
       version = ">= 5.55, < 6.0"
     }
     archive = {
@@ -36,7 +36,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project = "aurex-infrastructure-as-a-product"
-      Demo    = "demo1-terraform-os"
+      HandsOn = "01-terraform-os"
     }
   }
 }

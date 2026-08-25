@@ -8,8 +8,8 @@
 #   3. Rol de acceso  -> rol IAM que da acceso de lectura a ese bucket
 #
 # El mismo modulo se aprovisiona con los dos motores del taller:
-#   - Demo 1: Terraform OS + AWS CodeBuild
-#   - Demo 2: HCP Terraform (Terraform Cloud)
+#   - Hands-on 1: Terraform OS + AWS CodeBuild
+#   - Hands-on 2: HCP Terraform (Terraform Cloud)
 #
 # NOTA: la region, el assume_role del launch role y las default_tags NO se
 # declaran aqui. Los inyecta el motor en tiempo de ejecucion mediante

@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Demo 2 — motor de HCP Terraform. El apply corre en un workspace, no en AWS.
+# Hands-on 2 — motor de HCP Terraform. El apply corre en un workspace, no en AWS.
 #
 # ANTES de plan/apply:
 #     cd ../../modules/hcp-terraform-engine/engine/lambda-functions && make bin
@@ -62,7 +62,7 @@ module "catalog_pipeline" {
   github_branch           = var.github_branch
   existing_connection_arn = var.existing_connection_arn
 
-  # EL MISMO modulo que la Demo 1. Sin copiar, sin reescribir.
+  # EL MISMO modulo que el Hands-on 1. Sin copiar, sin reescribir.
   module_source_path    = "modules/standard-environment"
   terraform_cli_version = var.terraform_version
 }

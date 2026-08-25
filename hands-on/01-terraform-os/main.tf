@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Demo 1 — motor Terraform OS, ejecucion en AWS CodeBuild.
+# Hands-on 1 — motor Terraform OS, ejecucion en AWS CodeBuild.
 #
 # ANTES de plan/apply:
 #     cd ../../modules/terraform-os-engine/lambda-functions && make bin

@@ -16,7 +16,7 @@ que consume un equipo no depende de cómo se ejecuta por debajo.
                     ┌───────────────┴───────────────┐
                     ▼                               ▼
         ┌───────────────────────┐       ┌───────────────────────┐
-        │  Demo 1               │       │  Demo 2               │
+        │  Hands-on 1               │       │  Hands-on 2               │
         │  Terraform OS         │       │  HCP Terraform        │
         │  apply en CodeBuild   │       │  apply en un workspace│
         │  state en S3          │       │  state en HCP         │
@@ -31,16 +31,16 @@ Módulos reutilizables por un lado, entornos que los componen por otro.
 
 ```
 modules/
-  terraform-os-engine/              motor Demo 1: SQS, Lambdas, Step Functions, CodeBuild
-  hcp-terraform-engine/             motor Demo 2: envuelve el módulo de HashiCorp
+  terraform-os-engine/              motor Hands-on 1: SQS, Lambdas, Step Functions, CodeBuild
+  hcp-terraform-engine/             motor Hands-on 2: envuelve el módulo de HashiCorp
   catalog-bootstrap-terraform-os/   Portfolio + Launch Role
   catalog-bootstrap-hcp-terraform/  Launch Role + acceso (el Portfolio lo crea el motor)
-  catalog-pipeline/                 CodePipeline — UNO SOLO para las dos demos
+  catalog-pipeline/                 CodePipeline — UNO SOLO para los dos hands-on
   standard-environment/             el módulo de producto: red + almacenamiento + rol
 
-live/
-  demo1/    compone engine + bootstrap + pipeline con un provider
-  demo2/    igual, con el motor de HCP Terraform
+hands-on/
+  01-terraform-os/     compone engine + bootstrap + pipeline con un provider
+  02-hcp-terraform/    igual, con el motor de HCP Terraform
 ```
 
 Tres reglas que hacen que esto componga:
@@ -55,12 +55,12 @@ Tres reglas que hacen que esto componga:
   el tipo de producto; ahora es la variable `product_type` (`EXTERNAL` para el motor
   Terraform OS, `TERRAFORM_CLOUD` para el de HCP Terraform).
 
-`standard-environment` es **el mismo módulo para las dos demos**: ambas pipelines apuntan
+`standard-environment` es **el mismo módulo para los dos hands-on**: ambas pipelines apuntan
 a `modules/standard-environment`. No hay copia.
 
-## Qué cambia entre las dos demos
+## Qué cambia entre los dos hands-on
 
-|  | Demo 1 | Demo 2 |
+|  | Hands-on 1 | Hands-on 2 |
 |---|---|---|
 | Motor | `aws-samples/service-catalog-engine-for-terraform-os` | `hashicorp/aws-service-catalog-engine-for-tfc` |
 | Dónde corre el `apply` | Contenedor de AWS CodeBuild | Workspace de HCP Terraform |
@@ -72,7 +72,7 @@ a `modules/standard-environment`. No hay copia.
 Los nombres de cola no colisionan, así que **ambos motores pueden convivir** en la misma
 cuenta.
 
-## Demo 1 — la reescritura
+## Hands-on 1 — la reescritura
 
 El motor de AWS venía en SAM/CloudFormation y ejecutaba Terraform en un **Auto Scaling
 Group de EC2** dentro de una VPC con 3 NAT Gateways, orquestado por SSM Run Command con
@@ -98,13 +98,13 @@ mensajes, `DescribeProvisioningParameters` y `Notify*EngineWorkflowResult` intac
 ## Cómo desplegar
 
 Requisitos: `terraform >= 1.5`, `go`, `python3`, `aws-cli`, credenciales de AWS y
-—solo para la Demo 2— `TFE_TOKEN`.
+—solo paral Hands-on 2— `TFE_TOKEN`.
 
-### Demo 1
+### Hands-on 1
 
 ```bash
 cd modules/terraform-os-engine/lambda-functions && make bin   # ← imprescindible
-cd ../../../live/demo1 && terraform init && terraform apply
+cd ../../../hands-on/01-terraform-os && terraform init && terraform apply
 ```
 
 Un solo `apply`: Terraform ordena motor → bootstrap → pipeline por dependencias.
@@ -113,11 +113,11 @@ Un solo `apply`: Terraform ordena motor → bootstrap → pipeline por dependenc
 `go build` para Go). Terraform no compila nada: `archive_file` lee `build/` en tiempo de
 plan. Si se olvida, el `apply` falla con un mensaje explícito, no con un zip vacío.
 
-### Demo 2
+### Hands-on 2
 
 ```bash
 cd modules/hcp-terraform-engine/engine/lambda-functions && make bin
-cd ../../../../live/demo2 && terraform init && terraform apply
+cd ../../../../hands-on/02-hcp-terraform && terraform init && terraform apply
 ```
 
 Requiere `TFE_TOKEN` en el entorno.
@@ -129,7 +129,7 @@ destruye el motor primero, no queda nada capaz de ejecutar el `destroy`:
 
 ```bash
 aws servicecatalog terminate-provisioned-product --provisioned-product-id <pp-...>
-cd live/demo1 && terraform destroy   # el orden inverso lo resuelve Terraform
+cd hands-on/01-terraform-os && terraform destroy   # el orden inverso lo resuelve Terraform
 ```
 
 El producto de Service Catalog lo crea la pipeline por CLI, no Terraform, así que hay que
@@ -170,7 +170,7 @@ CloudFormation— **está resuelta: sí.** Comprobado de dos formas:
 > This limit is because `EXTERNAL` can only be routed to one engine in an account."*
 
 Es la restricción más dura y no se puede rodear: si quieres dos motores EXTERNAL, van en
-cuentas hub distintas. No afecta a tener las dos demos a la vez, porque la Demo 2 usa
+cuentas hub distintas. No afecta a tener los dos hands-on a la vez, porque el Hands-on 2 usa
 `TERRAFORM_CLOUD`, que es otro tipo de producto y otras colas — de hecho convivieron sin
 problema durante las pruebas.
 
@@ -211,7 +211,7 @@ alinearlo con la forma documentada.
 **5. Terraform no puede hacer `for_each` sobre un provider.** N cuentas son N root modules
 y N applies, orquestados desde CI. No se puede expresar en un solo apply.
 
-**6. La Demo 2 necesita un OIDC provider de `app.terraform.io` en cada cuenta spoke** — es
+**6. La Hands-on 2 necesita un OIDC provider de `app.terraform.io` en cada cuenta spoke** — es
 un recurso IAM por cuenta.
 
 ### Un detalle a vigilar
