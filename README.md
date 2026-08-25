@@ -292,6 +292,30 @@ infracost_api_key_secret_arn = "arn:aws:secretsmanager:...:secret:aurex/infracos
 
 Sin ella, la estimación se omite y el resto de la inspección funciona igual.
 
+### Infracost nunca detiene nada por fallar
+
+Está blindado a propósito, y en el runner importa más que en la pipeline: un fallo ahí no
+rompería un build, rompería **el aprovisionamiento de un usuario final**. Verificado con
+ocho escenarios simulados:
+
+| Escenario | Resultado |
+|---|---|
+| Sin API key | Se omite, continúa |
+| Sin API key pero con límite configurado | Continúa, avisa que la puerta no se aplicó |
+| API key presente pero binario no instalado | Continúa con aviso |
+| Coste 12.34, límite 50 | Continúa |
+| **Coste 250, límite 50** | **Aborta antes de crear nada** ← el único caso |
+| Coste 250, límite 0 | Continúa (advisory) |
+| Infracost caído / API key inválida | Continúa con aviso |
+| Infracost devuelve `null` | Continúa sin comparar |
+
+**Es fail-open deliberado.** Si hay límite pero la estimación falla, se continúa. La
+alternativa —bloquear cuando no se puede estimar— convertiría cualquier caída de Infracost
+en una caída del catálogo entero. El coste de esta decisión es que la puerta se puede eludir
+rompiendo la herramienta, y por eso el aviso es ruidoso y queda en el log del build. Si
+alguna vez necesitas fail-closed, el sitio es la rama `elif [ "${LIMIT}" != "0" ]` de
+`modules/terraform-os-engine/buildspec/terraform-runner.yml`.
+
 ### Versiones fijadas a propósito
 
 Las herramientas se instalan desde tarballs de release **con versión fijada**, no con

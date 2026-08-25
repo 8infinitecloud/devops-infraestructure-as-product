@@ -13,12 +13,21 @@ phases:
         chmod +x /usr/local/bin/terraform
         terraform version
         command -v jq >/dev/null || { apt-get update -qq && apt-get install -y -qq jq; }
+        # Infracost es OPCIONAL y NUNCA debe tumbar un aprovisionamiento.
+        # Aqui hay set -e activo, asi que todo va dentro de condiciones: un fallo
+        # en la condicion de un `if` no dispara set -e.
         if [ -n "${INFRACOST_API_KEY:-}" ]; then
           INFRACOST_V=0.10.45
-          curl -sSL "https://github.com/infracost/infracost/releases/download/v${INFRACOST_V}/infracost-linux-amd64.tar.gz" \
-            | tar -xz -C /tmp
-          mv /tmp/infracost-linux-amd64 /usr/local/bin/infracost
-          infracost --version
+          if curl -sSL --max-time 90 "https://github.com/infracost/infracost/releases/download/v${INFRACOST_V}/infracost-linux-amd64.tar.gz" -o /tmp/ic.tgz \
+             && tar -xzf /tmp/ic.tgz -C /tmp \
+             && mv /tmp/infracost-linux-amd64 /usr/local/bin/infracost \
+             && chmod +x /usr/local/bin/infracost; then
+            infracost --version || true
+          else
+            echo "AVISO: no se pudo instalar infracost. Se continua SIN estimacion de coste."
+          fi
+        else
+          echo "infracost: omitido (sin INFRACOST_API_KEY)."
         fi
   build:
     commands:
@@ -114,21 +123,41 @@ phases:
         # --- Puerta de coste sobre el plan REAL ---------------------------------
         # A diferencia de la pipeline, aqui ya existen los parametros que eligio el
         # usuario final. Es el unico sitio donde el coste se puede gobernar de verdad.
-        if [ -n "${INFRACOST_API_KEY:-}" ]; then
-          terraform show -json tfplan > tfplan.json
-          infracost breakdown --path tfplan.json --format json --out-file infracost.json
-          infracost breakdown --path tfplan.json --format table || true
+        # Lo UNICO que puede abortar aqui es un presupuesto excedido de verdad.
+        # Ni la instalacion, ni la API, ni el parseo del JSON pueden hacerlo.
+        MONTHLY=""
+        LIMIT="${INFRACOST_MAX_MONTHLY_USD:-0}"
 
-          MONTHLY="$(jq -r '.totalMonthlyCost // "0"' infracost.json)"
-          echo "== Coste mensual estimado: USD ${MONTHLY} =="
-
-          LIMIT="${INFRACOST_MAX_MONTHLY_USD:-0}"
-          if [ "${LIMIT}" != "0" ] && awk "BEGIN{exit !(${MONTHLY} > ${LIMIT})}"; then
-            echo "PRESUPUESTO EXCEDIDO: USD ${MONTHLY}/mes supera el limite de USD ${LIMIT}/mes." >&2
-            echo "Se detiene antes de crear ningun recurso." >&2
-            exit 1
+        if [ -n "${INFRACOST_API_KEY:-}" ] && command -v infracost >/dev/null 2>&1; then
+          if terraform show -json tfplan > tfplan.json 2>/dev/null \
+             && infracost breakdown --path tfplan.json --format json --out-file infracost.json >/dev/null 2>&1; then
+            MONTHLY="$(jq -r '.totalMonthlyCost // "0"' infracost.json 2>/dev/null || echo "")"
+            infracost breakdown --path tfplan.json --format table 2>/dev/null || true
+          else
+            echo "AVISO: la estimacion de coste fallo (API key, cuota o red). Se continua."
           fi
-          [ "${LIMIT}" = "0" ] && echo "   (advisory: INFRACOST_MAX_MONTHLY_USD=0, no bloquea)"
+        fi
+
+        # Solo se compara si se obtuvo un numero. Si no, no se bloquea a ciegas.
+        if printf '%s' "${MONTHLY}" | grep -Eq '^[0-9]+([.][0-9]+)?$'; then
+          echo "== Coste mensual estimado: USD ${MONTHLY} =="
+          if [ "${LIMIT}" != "0" ]; then
+            if awk "BEGIN{exit !(${MONTHLY} > ${LIMIT})}"; then
+              echo "PRESUPUESTO EXCEDIDO: USD ${MONTHLY}/mes supera el limite de USD ${LIMIT}/mes." >&2
+              echo "Se detiene antes de crear ningun recurso." >&2
+              exit 1
+            fi
+            echo "   Dentro del limite de USD ${LIMIT}/mes."
+          else
+            echo "   (advisory: INFRACOST_MAX_MONTHLY_USD=0, no bloquea)"
+          fi
+        elif [ "${LIMIT}" != "0" ]; then
+          # FAIL-OPEN deliberado: hay limite pero no hay estimacion.
+          # Se elige continuar para que una caida de Infracost no bloquee el
+          # catalogo. El coste es que la puerta se puede eludir rompiendo la
+          # herramienta, por eso el aviso es ruidoso y queda en el log del build.
+          echo "AVISO: hay limite de presupuesto (USD ${LIMIT}/mes) pero NO se pudo estimar el coste."
+          echo "       Se continua con el apply: la puerta de coste NO se aplica en esta ejecucion."
         fi
 
         terraform apply -input=false -compact-warnings -no-color tfplan

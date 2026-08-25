@@ -44,9 +44,19 @@ phases:
         fi
 
         mkdir -p reports
+
+        # Ninguna herramienta que falte puede tumbar la fase: si alguna no se
+        # instalo, se reporta y el build phase la marca como hallazgo.
         echo "== Versiones =="
-        checkov --version; tflint --version | head -1; gitleaks version; conftest --version | head -1
-        command -v infracost >/dev/null && infracost --version || echo "infracost: omitido (sin API key)"
+        for tool in checkov tflint gitleaks conftest infracost; do
+          if command -v "$tool" >/dev/null 2>&1; then
+            printf '  %-10s %s\n' "$tool" "$("$tool" --version 2>/dev/null | head -1 || echo instalado)"
+          else
+            printf '  %-10s NO INSTALADO\n' "$tool"
+          fi
+        done
+
+        exit 0
 
   build:
     commands:
