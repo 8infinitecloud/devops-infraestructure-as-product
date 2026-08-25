@@ -271,3 +271,79 @@ El mismo `standard-environment`, sin una línea distinta, aprovisionado por los 
 | Tipo de producto | `EXTERNAL` | `TERRAFORM_CLOUD` |
 | VPC creada | `10.40.0.0/16` | `10.50.0.0/16` |
 | Parámetros expuestos | Los mismos 5 | Los mismos 5 |
+
+---
+
+## 7. FASE 4 — Limpieza
+
+### Orden seguido
+
+En ambas demos: **terminar el producto aprovisionado primero**. Si se destruye el motor
+antes, no queda nada capaz de ejecutar el `destroy` y los recursos se quedan huérfanos.
+Después, el producto de Service Catalog (lo crea la pipeline por CLI, no Terraform:
+constraint → desasociar → `delete-product`). Y por último `terraform destroy` en orden
+inverso.
+
+| Demo | catalog-pipeline | catalog-bootstrap | engine | Total |
+|---|---|---|---|---|
+| Demo 1 | 14 | 4 | 87 | **105** |
+| Demo 2 | 14 | 3 | 96 | **113** |
+
+**218 recursos destruidos.** `terraform state list` devuelve 0 en las seis carpetas.
+
+### Verificación final
+
+| Recurso | Estado |
+|---|---|
+| Stacks CloudFormation | vacío |
+| Lambdas del taller | vacío |
+| Step Functions | vacío |
+| Colas SQS `ServiceCatalog*` | vacío |
+| Proyectos CodeBuild | vacío |
+| Pipelines | vacío |
+| EC2 (activas o paradas) | vacío |
+| NAT Gateways | vacío |
+| VPCs del módulo | vacío |
+| Roles IAM del taller | vacío |
+| Buckets S3 del taller | vacío |
+| Portfolios | solo `samples` (preexistente, ajeno) |
+| Workspaces en HCP Terraform | solo `lab-resources-serverless`, `lab-infragraph-connector`, `dev` (tuyos) |
+| Teams en HCP Terraform | solo `owners`. El `aurex-service-catalog` que creó el motor desapareció con el destroy |
+| OIDC providers | solo el de GitHub Actions. El de `app.terraform.io` se creó y se destruyó con el motor |
+
+### Restos limpiados que no eran de este trabajo
+
+- Portfolio `port-s2jeupfnqwaaq` "TFC Example Portfolio" (23-ago). Hubo que **desasociar el
+  principal antes** de poder borrarlo.
+- Workspace huérfano `058264353988-pp-xw6iwhnzk4ox2` en HCP Terraform (24-ago).
+- Producto aprovisionado `test-tfc-bucket-1787546133`.
+- Resource group `SC-058264353988-pp-xw6iwhnzk4ox2`.
+- Secreto `terraform-cloud-credentials-for-service-catalog-engine` en ventana de recuperación.
+- Stack y bucket `aws-sam-cli-managed-default`, creados por el `sam deploy` previo a la
+  migración. El borrado del stack falló primero porque el bucket tenía **10 versiones de
+  objeto**; hubo que vaciarlas una a una antes de reintentar.
+
+### Lo que NO se pudo limpiar
+
+**`pp-ojclw6uitaxtg` (`test-s3-website-1787541361`)** — atascado en `UNDER_CHANGE` desde el
+**2026-08-23**, dos días antes de este trabajo. Service Catalog rechaza terminarlo:
+
+```
+ValidationException: Can't terminate provisioned product because it's still under
+change or its status does not allow further operation
+```
+
+Es un **registro de Service Catalog sin recursos detrás**: no hay buckets, ni VPCs, ni
+instancias asociadas — verificado. No genera coste. El motor que lo creó ya no existe, así
+que el registro no puede avanzar por sí solo. Requiere abrir un caso con soporte de AWS.
+
+### Pendiente para el usuario
+
+El token de HCP Terraform llegó por chat en texto plano. **Conviene rotarlo.** Sigue
+almacenado en:
+- `~/.terraform.d/credentials.tfrc.json` (0600)
+- `~/.config/aurex/tfe.env` (0600)
+- Secrets Manager `aurex/tfc/team-token`
+
+Ninguna de las dos pipelines acabó consumiéndolo: en la Demo 2 el token solo hace falta en
+local, para que el provider `tfe` cree el team y el workspace durante el `apply`.
