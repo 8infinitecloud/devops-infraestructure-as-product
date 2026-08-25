@@ -195,3 +195,79 @@ decodifica (`fromjson? // .value` en jq ≡ `json.loads` con fallback a string e
 | Recursos reales en AWS | VPC `vpc-0ee92c5f7291415e6` (10.40.0.0/16), 2 subredes en 2 AZ, bucket `aurexdemo1-storage-…`, rol `aurexdemo1-environment-access` |
 | Record outputs devueltos a Service Catalog | `vpc_id`, `subnet_ids`, `storage_bucket_name`, `access_role_arn` |
 | `TerminateProvisionedProduct` | **OK** — `terraform destroy` vía CodeBuild eliminó la VPC y el bucket |
+
+---
+
+## 6. Demo 2 — motor de HCP Terraform
+
+### 6.1 Qué se hizo
+
+Ya estaba en Terraform, así que no hubo traducción de tooling. El trabajo fue **alinear la
+estructura** a las mismas 4 carpetas de la Demo 1:
+
+- `engine/` — el módulo de HashiCorp **sin cambios de arquitectura**. Se añadió únicamente
+  un `outputs.tf` en el módulo raíz para re-exportar los ARNs que necesitan las otras carpetas.
+- `catalog-bootstrap/` — **no crea Portfolio**: reutiliza el "TFC Example Portfolio" que el propio
+  motor crea al aplicar. Aporta solo el acceso al Portfolio y el Launch Role del producto
+  `standard-environment`, que el motor no cubre (solo crea el de *su* producto de ejemplo).
+- `catalog-pipeline/` — mismo patrón que la Demo 1, publicando como `TERRAFORM_CLOUD`.
+- `catalog-modules/` — **no duplica el módulo**: un README apunta al de la Demo 1.
+
+### 6.2 Decisión sobre el Launch Role y OIDC
+
+El motor acota el `sub` del token OIDC al **ID del producto** como nombre de proyecto:
+
+```
+organization:<org>:project:<productId>:workspace:*:run_phase:*
+```
+
+Aquí el producto lo crea `catalog-pipeline/` *después* de que exista el rol, así que el
+proyecto va con comodín. Es una relajación consciente, acotada a esta organización de HCP
+Terraform, y queda anotada porque en producción convendría invertir el orden: crear el
+producto en `catalog-bootstrap/` y que la pipeline solo añada versiones.
+
+### 6.3 La mejora del webhook: no implementada, documentada
+
+Se despliega con el polling de `poll-run-status` tal y como viene. El diseño completo del
+reemplazo por webhooks (notification configurations con firma HMAC-SHA512 → API Gateway →
+`.waitForTaskToken`) está en `demo2-hcp-terraform-engine/MEJORA-PENDIENTE-webhook.md`,
+con el alcance del cambio, por qué se pospuso y cómo se validaría.
+
+### 6.4 Problema encontrado
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| `InvalidRequestException: a secret with this name is already scheduled for deletion` | El secreto `terraform-cloud-credentials-for-service-catalog-engine` de un intento del 2026-08-24 estaba en ventana de recuperación, bloqueando el nombre | `delete-secret --force-delete-without-recovery` y reintento |
+
+El `EntityAlreadyExists` del OIDC provider que se anticipaba **no se dio**: se verificó antes con
+`aws iam list-open-id-connect-providers` que no existía ninguno para `app.terraform.io`. La lógica
+de import queda documentada por si reaparece.
+
+### 6.5 Resultado de las pruebas E2E
+
+| Prueba | Resultado |
+|---|---|
+| `make bin` (7 Lambdas en Go, arm64) | OK |
+| `terraform apply` engine | **135 recursos**. Team `aurex-service-catalog` creado en HCP Terraform, OIDC provider creado |
+| `terraform apply` catalog-bootstrap | 3 recursos. Reutiliza el portfolio `port-lefekjdiwz6q4` del motor |
+| `terraform apply` catalog-pipeline | 14 recursos |
+| Pipeline: Source / Build-Validate / Publish | **Succeeded las 3** — producto `prod-4xc5xszrhiriq`, versión `v20260825-130354-aa19bdb` |
+| `DescribeProvisioningParameters` | **OK** — el parser del motor de HashiCorp leyó **el mismo módulo** de la Demo 1 y extrajo las mismas 5 variables |
+| Aprovisionamiento | **AVAILABLE** |
+| Workspace en HCP Terraform | `058264353988-pp-znx2rcggrcgws`, Terraform 1.5.7, **16 recursos** |
+| Run en HCP Terraform | `run-sLdjvdgKerFciP8Z` → **applied** |
+| Recursos reales en AWS | VPC `vpc-03abfb14b2d19b918` (10.50.0.0/16), 2 subredes en 2 AZ, bucket `aurexdemo2-storage-…`, rol `aurexdemo2-environment-access` |
+| Record outputs | `vpc_id`, `subnet_ids`, `storage_bucket_name`, `access_role_arn` |
+
+### 6.6 La demostración del taller
+
+El mismo `standard-environment`, sin una línea distinta, aprovisionado por los dos motores:
+
+| | Demo 1 | Demo 2 |
+|---|---|---|
+| Ejecuta el apply | Contenedor de CodeBuild | Workspace de HCP Terraform |
+| State | S3 `sc-terraform-engine-state-…` | Workspace de HCP Terraform |
+| Credenciales | El motor asume el Launch Role | Dynamic Credentials vía OIDC |
+| Tipo de producto | `EXTERNAL` | `TERRAFORM_CLOUD` |
+| VPC creada | `10.40.0.0/16` | `10.50.0.0/16` |
+| Parámetros expuestos | Los mismos 5 | Los mismos 5 |
