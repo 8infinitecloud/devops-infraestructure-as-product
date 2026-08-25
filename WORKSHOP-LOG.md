@@ -425,3 +425,32 @@ A favor: el motor ya está diseñado para ello. La clave del state es
 `{accountId}/{provisionedProductId}` —namespaceada por cuenta—, el rol de CodeBuild ya
 tiene `sts:AssumeRole` sobre `arn:aws:iam::*:role/*`, y el backend S3 usa las credenciales
 del hub mientras el provider `aws` asume el Launch Role del spoke.
+
+### 8.6 Re-prueba E2E de la Demo 2 tras el refactor
+
+| Prueba | Resultado |
+|---|---|
+| `terraform apply` de `live/demo2` | **150 recursos en un solo apply** |
+| Pipeline Source / Build-Validate / Publish | Succeeded las 3. Producto `prod-abqplym55kees` |
+| `DescribeProvisioningParameters` | Las mismas 5 variables — el parser de HashiCorp sobre **el mismo módulo** de la Demo 1 |
+| Provision | **AVAILABLE** |
+| Workspace en HCP Terraform | `058264353988-pp-u57rlssujjpz2`, 16 recursos, Terraform 1.5.7 |
+| Run | `run-S2w5datA3yo9UF4j` → **applied** |
+| Recursos en AWS | VPC `10.70.0.0/16`, 2 subredes, bucket, rol `aurexmod2-environment-access` |
+| Terminate + `terraform destroy` | **100 recursos destruidos**, state a 0 |
+
+Un problema propio del ciclo montar/desmontar: el destroy dejaba el secreto
+`terraform-cloud-credentials-for-service-catalog-engine` en ventana de recuperación de
+**30 días**, bloqueando el nombre y haciendo que el siguiente apply fallara. Se añadió
+`recovery_window_in_days = 0` al recurso vendorizado; en producción querrías el valor por
+defecto y así queda anotado junto al recurso.
+
+### 8.7 Verificación final tras el refactor
+
+`terraform state list` devuelve **0** en `live/demo1` y `live/demo2`. Vacío en AWS:
+Lambdas, Step Functions, colas SQS, CodeBuild, CodePipeline, EC2, VPCs del módulo, buckets,
+roles y el secreto del motor. En HCP Terraform solo quedan los workspaces del usuario
+(`lab-*`, `dev`) y el team `owners`. El único OIDC provider es el de GitHub Actions.
+
+Sigue en pie el mismo resto de siempre: `test-s3-website-1787541361`, atascado en
+`UNDER_CHANGE` desde el 2026-08-23, sin recursos detrás y sin motor que lo pueda avanzar.
