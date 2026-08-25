@@ -347,3 +347,81 @@ almacenado en:
 
 Ninguna de las dos pipelines acabó consumiéndolo: en la Demo 2 el token solo hace falta en
 local, para que el provider `tfe` cree el team y el workspace durante el `apply`.
+
+---
+
+## 8. Refactor a módulos
+
+### 8.1 Qué se arregló
+
+La estructura anterior (`demoN/{engine,catalog-bootstrap,catalog-pipeline,catalog-modules}`)
+tenía tres problemas que solo se ven al intentar reutilizarla:
+
+1. **`terraform_remote_state` con backend local.** `catalog-bootstrap` leía
+   `../engine/terraform.tfstate`. Eso funciona en una máquina y en ninguna otra: depende de
+   rutas relativas y de ficheros de state locales. Ahora los ARNs del motor entran como
+   variables.
+2. **Bloques `provider` dentro de cada carpeta.** Impide pasarle a un módulo un provider
+   distinto, que es exactamente lo que hace falta para multicuenta.
+3. **`catalog-pipeline` duplicada.** La de la Demo 2 era una copia con `sed` de la de la
+   Demo 1. Dos copias del mismo código se desincronizan.
+
+Estructura nueva: `modules/` (reutilizables, sin `provider` ni backend) + `live/` (un root
+por demo). Cada demo pasa a ser **un solo `apply`**, con el orden motor → bootstrap →
+pipeline resuelto por dependencias en vez de por el operador.
+
+`catalog-pipeline` queda como **un solo módulo** parametrizado por `product_type`:
+`EXTERNAL` para el motor Terraform OS, `TERRAFORM_CLOUD` para el de HCP Terraform.
+
+### 8.2 Dos cosas que solo salieron a la luz al unificar la pipeline
+
+| Problema | Causa | Solución |
+|---|---|---|
+| `no available releases match >= 5.12.0, 5.12.0, >= 5.40.0` | El módulo vendorizado de HashiCorp fijaba `aws = "5.12.0"` **exacto**. Un pin exacto en un módulo *hijo* impide componerlo con `catalog-pipeline`, que necesita `aws_codeconnections_connection` (>= 5.55) | Relajado a `>= 5.12`. Es cambio de restricción, no de lógica |
+| Sin cota superior, el provider resolvía a **v6.61** | Salto de major sobre código escrito para 5.12 — justo lo que falla a los 10 minutos de un apply | Ambos roots acotados a `>= 5.55, < 6.0`. Como consecuencia, `data.aws_region.current.region` vuelve a `.name`, que es el atributo correcto en 5.x |
+
+### 8.3 Un bug propio del refactor
+
+Al parametrizar los nombres de los proyectos de CodeBuild con `name_prefix`, **olvidé
+parametrizar los de sus log groups**. El proyecto `aurex-os-catalog-validate` escribía en
+`/aws/codebuild/aurex-catalog-validate` mientras la política IAM permitía
+`/aws/codebuild/aurex-os-catalog-*`. CodeBuild no podía escribir logs y el build moría
+**sin dejar rastro**: `logs.groupName` venía a `null` y no había log que leer.
+
+Se detectó comparando los log groups existentes con los nombres de los proyectos.
+
+### 8.4 Re-prueba E2E tras el refactor
+
+| Prueba | Resultado |
+|---|---|
+| `terraform apply` de `live/demo1` | **105 recursos en un solo apply** |
+| Pipeline disparada por **`git push`** | **Succeeded**, `Trigger: Webhook` — cerraba el hueco que quedaba de la primera ronda |
+| Pipeline Source / Build-Validate / Publish | Succeeded las 3. Producto `prod-73m7z43g3mao2` |
+| Provision | **AVAILABLE**. VPC `10.60.0.0/16`, 2 subredes |
+| **Update** (`subnet_count` 2 → 3) | **AVAILABLE**, tercera subred creada en `us-east-1c` — cerraba el otro hueco |
+| Terminate + `terraform destroy` | OK |
+
+Con esto, **los dos huecos que quedaban de la primera ronda están cerrados**: el flujo de
+`update` y el arranque automático de la pipeline por push.
+
+### 8.5 Multicuenta: preparado, no implementado
+
+Los módulos quedan escritos para que hub-and-spoke sea un cambio en `live/` (añadir alias
+de provider y pasarlos con `providers = {}`), no un rewrite. **No se implementó ni se
+probó**: hay una sola cuenta en la organización `o-56ui6zshzw`.
+
+Tres cosas que conviene tener presentes antes de abordarlo:
+
+1. **Terraform no puede hacer `for_each` sobre un provider.** N cuentas son N root modules
+   y N applies, orquestados desde CI. No se puede expresar en un solo apply.
+2. **La Demo 2 necesita un OIDC provider de `app.terraform.io` en cada cuenta spoke** — es
+   un recurso IAM por cuenta. La Demo 1 no tiene ese problema.
+3. **Verificar primero** que los productos `EXTERNAL` y `TERRAFORM_CLOUD` se comparten
+   entre cuentas vía portfolio share igual que los de CloudFormation. Si no, la premisa
+   hub-and-spoke para estas demos cambia de raíz. `servicecatalog
+   get-aws-organizations-access-status` está hoy en `DISABLED`.
+
+A favor: el motor ya está diseñado para ello. La clave del state es
+`{accountId}/{provisionedProductId}` —namespaceada por cuenta—, el rol de CodeBuild ya
+tiene `sts:AssumeRole` sobre `arn:aws:iam::*:role/*`, y el backend S3 usa las credenciales
+del hub mientras el provider `aws` asume el Launch Role del spoke.

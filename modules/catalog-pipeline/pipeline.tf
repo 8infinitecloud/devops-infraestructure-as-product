@@ -66,7 +66,7 @@ resource "aws_iam_role_policy" "codebuild" {
 # --- Etapa Build / Validate --------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "validate" {
-  name              = "/aws/codebuild/aurex-catalog-validate"
+  name              = "/aws/codebuild/${var.name_prefix}-validate"
   retention_in_days = var.log_retention_days
 }
 
@@ -111,7 +111,7 @@ resource "aws_codebuild_project" "validate" {
 # --- Etapa Publish -----------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "publish" {
-  name              = "/aws/codebuild/aurex-catalog-publish"
+  name              = "/aws/codebuild/${var.name_prefix}-publish"
   retention_in_days = var.log_retention_days
 }
 
