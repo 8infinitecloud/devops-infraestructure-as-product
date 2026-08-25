@@ -6,11 +6,10 @@ phases:
     commands:
       - |
         set -euo pipefail
-        # AWS Service Catalog retiro el productType TERRAFORM_OPEN_SOURCE el 2023-12-14
-        # y lo sustituyo por EXTERNAL. El motor ya escucha ambos flujos: los productos
-        # EXTERNAL entran por las colas ServiceCatalogExternal*OperationQueue, atendidas
-        # por las mismas Lambdas handler y las mismas state machines.
-        # https://docs.aws.amazon.com/servicecatalog/latest/adminguide/update_terraform_open_source_to_external.html
+        # Demo 2: el producto se publica como TERRAFORM_CLOUD. Ese tipo enruta a las
+        # colas ServiceCatalogTerraformCloud*OperationQueue del motor de HashiCorp, y
+        # es el que consume su terraform-parameter-parser. El apply lo ejecuta un
+        # workspace de HCP Terraform, no un contenedor en esta cuenta.
         SRC_VERSION="$(cat source_version.txt 2>/dev/null || echo manual)"
         VERSION="v$(date -u +%Y%m%d-%H%M%S)-${SRC_VERSION:0:7}"
         SAFE_NAME="${PRODUCT_NAME// /-}"
@@ -32,9 +31,9 @@ phases:
             --name "${PRODUCT_NAME}" \
             --owner "${PRODUCT_OWNER}" \
             --description "Red, almacenamiento y rol de acceso estandar. Publicado por CodePipeline." \
-            --product-type EXTERNAL \
+            --product-type TERRAFORM_CLOUD \
             --provisioning-artifact-parameters \
-              "{\"Name\":\"${VERSION}\",\"Description\":\"Commit ${SRC_VERSION}\",\"Type\":\"EXTERNAL\",\"Info\":{\"LoadTemplateFromURL\":\"${ARTIFACT_URL}\"},\"DisableTemplateValidation\":true}" \
+              "{\"Name\":\"${VERSION}\",\"Description\":\"Commit ${SRC_VERSION}\",\"Type\":\"TERRAFORM_CLOUD\",\"Info\":{\"LoadTemplateFromURL\":\"${ARTIFACT_URL}\"},\"DisableTemplateValidation\":true}" \
             --query 'ProductViewDetail.ProductViewSummary.ProductId' --output text)"
           echo "Producto creado: ${PRODUCT_ID}"
 
@@ -45,7 +44,7 @@ phases:
           echo "== Producto existente ${PRODUCT_ID}: anado la version ${VERSION} =="
           aws servicecatalog create-provisioning-artifact \
             --product-id "${PRODUCT_ID}" \
-            --parameters "{\"Name\":\"${VERSION}\",\"Description\":\"Commit ${SRC_VERSION}\",\"Type\":\"EXTERNAL\",\"Info\":{\"LoadTemplateFromURL\":\"${ARTIFACT_URL}\"},\"DisableTemplateValidation\":true}" \
+            --parameters "{\"Name\":\"${VERSION}\",\"Description\":\"Commit ${SRC_VERSION}\",\"Type\":\"TERRAFORM_CLOUD\",\"Info\":{\"LoadTemplateFromURL\":\"${ARTIFACT_URL}\"},\"DisableTemplateValidation\":true}" \
             --query 'ProvisioningArtifactDetail.Id' --output text
         fi
 

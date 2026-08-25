@@ -71,64 +71,83 @@ El token llegó por chat en texto plano. Colocado en tres sitios según su uso, 
 
 ---
 
-## 3. Demo 1 — reestructura del motor a CodeBuild
+## 3. Demo 1 — de SAM/CloudFormation a Terraform puro
 
-### 3.1 Qué se eliminó
+### 3.1 Por qué
 
-**Red completa** (VPC, 3 NAT Gateways, 3 EIP, 6 subredes, IGW, tablas de rutas, SG, VPC endpoint de S3),
-**cómputo EC2** (Auto Scaling Group, Launch Template, Instance Profile, rol del ASG) y **4 Lambdas**:
+Las dos demos del taller usaban tooling distinto: la Demo 1 iba con SAM y la Demo 2 ya estaba en
+Terraform. Se reescribió la Demo 1 a Terraform para que el taller enseñe **un solo tooling de punta
+a punta** y la comparación entre motores sea limpia: lo único que cambia entre demos es el motor,
+no la forma de desplegarlo.
 
-| Lambda | Por qué |
+> Antes de retirar SAM se llegó a desplegar el stack de CloudFormation hasta `CREATE_COMPLETE`,
+> así que la arquitectura estaba validada; la migración fue de tooling, no de diseño.
+
+### 3.2 Traducción recurso a recurso
+
+| SAM / CloudFormation | Terraform |
 |---|---|
-| `select-worker-host` | Pedido explícitamente. Ya no hay flota que elegir |
-| `poll-command-invocation` | Pedido explícitamente. `.sync` sustituye al polling |
-| `send-apply-command` | Su único trabajo era construir el `SSM SendCommand`. `startBuild.sync` lo hace directo |
-| `send-destroy-command` | Ídem |
+| `AWS::Serverless::Function` | `aws_lambda_function` + `data.archive_file` |
+| `AWS::Serverless::StateMachine` | `aws_sfn_state_machine` (misma definición ASL) |
+| `DefinitionSubstitutions` | `templatefile()` sobre el mismo JSON |
+| `AWS::SQS::Queue` | `aws_sqs_queue` (`for_each` sobre las 6 colas) |
+| `AWS::SQS::QueuePolicy` | `aws_sqs_queue_policy` |
+| `AWS::KMS::Key` | `aws_kms_key` + `data.aws_iam_policy_document` |
+| `AWS::IAM::Role` + `Policies` | `aws_iam_role` + `aws_iam_role_policy` (1:1) |
+| `ManagedPolicyArns` | `aws_iam_role_policy_attachment` |
+| `AWS::Lambda::EventSourceMapping` | `aws_lambda_event_source_mapping` |
+| `AWS::Lambda::Permission` | `aws_lambda_permission` |
+| `AWS::CodeBuild::Project` | `aws_codebuild_project` |
+| `AWS::S3::Bucket` (+ propiedades) | `aws_s3_bucket` + recursos `_versioning`, `_logging`, `_public_access_block`, `_server_side_encryption_configuration` |
+| `sam build` | `lambda-functions/Makefile` |
 
-También `core/ssm_facade.py` y `core/cli.py`, que solo usaban esas cuatro.
+**Total: 87 recursos de Terraform.**
 
-> Las dos últimas no estaban en la lista original del encargo. Se eliminan porque, al invocar
-> CodeBuild directamente desde Step Functions, se quedaban sin función alguna.
+### 3.3 Empaquetado de las Lambdas
 
-**Resultado: 104 → 54 recursos** en el template.
+Terraform no compila nada: `data.archive_file` lee `lambda-functions/build/` **en tiempo de plan**.
+Por eso `make bin` va siempre antes de `terraform plan/apply` — el mismo patrón que ya usaba el
+motor de HashiCorp en la Demo 2.
 
-### 3.2 Qué se añadió
+```makefile
+python:  # por cada Lambda: copia fuentes (sin tests) + pip install -r requirements.txt -t build/<name>
+go:      # GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/terraform-parameter-parser/bootstrap
+verify:  # comprueba con file(1) que el binario es x86-64, no el del host
+```
 
-- `TerraformRunnerProject` — proyecto CodeBuild `NO_SOURCE` con buildspec inline.
-- `TerraformRunnerLogGroup` — retención 30 días.
-- `TerraformCodeBuildRole` — hereda las responsabilidades del antiguo rol del ASG:
-  leer/escribir el state en S3 + KMS, y `sts:AssumeRole` sobre el Launch Role.
-- Parámetros `TerraformRunnerComputeType`, `TerraformRunnerTimeoutInMinutes`, `TerraformRunnerConcurrentBuildLimit`.
-- Sección `Outputs` con `CodeBuildServiceRoleArn` (pedido explícitamente), `CodeBuildProjectName`,
-  `ParameterParserRoleArn`, `TerraformStateBucketName` y los ARN de ambas state machines.
+`lambda_packaging.tf` añade una `precondition` que falla con un mensaje claro si alguien olvidó
+ejecutar `make bin`, en vez de producir un zip vacío.
 
-**Sin `VpcConfig`** en ninguna Lambda ni en CodeBuild, tal y como se pidió.
+### 3.4 EC2 → CodeBuild
 
-`TerraformCliVersion` pasa de `1.2.8` a **`1.5.7`** (última release con licencia MPL, y alineada
-con el `1.5.4` por defecto del motor de la Demo 2).
+Se eliminaron VPC, 3 NAT Gateways, 3 EIP, 6 subredes, IGW, tablas de rutas, security group,
+VPC endpoint de S3, Auto Scaling Group, Launch Template e Instance Profile. En su lugar, un único
+`aws_codebuild_project` sin `vpc_config`.
 
-### 3.3 Step Functions
+Las Step Functions pasan de
 
-`Generate Tracer Tag → Select worker host → Send apply command → Wait → Poll → Choice → Get state file outputs`
+```
+Generate Tracer Tag → Select worker host → Send apply command → Wait → Poll → Choice → Get state file outputs
+```
 
-pasa a ser
+a
 
-`Generate Tracer Tag → Run Terraform apply (codebuild:startBuild.sync) → Get state file outputs`
+```
+Generate Tracer Tag → Run Terraform apply (codebuild:startBuild.sync) → Get state file outputs
+```
 
-Los parámetros viajan como `EnvironmentVariablesOverride`, usando los intrínsecos
-`States.Format` y `States.JsonToString`. El error de un build se captura con
-`Catch: States.ALL → Convert error structure`, que mantiene `isWrapperError: true` para
-**no romper el contrato con Service Catalog**: el fallo de Terraform se notifica como fallo del
-producto, pero la state machine termina en `Succeeded` porque la notificación sí funcionó.
+Se eliminaron `select-worker-host` y `poll-command-invocation` (pedido explícito) y también
+`send-apply-command` y `send-destroy-command`: su único trabajo era construir el `SSM SendCommand`
+que la integración síncrona sustituye. Con ellas se fueron `core/ssm_facade.py` y `core/cli.py`.
 
-Grafo validado: 0 destinos rotos, 0 estados inalcanzables, y las substituciones `${...}` del JSON
-coinciden exactamente con las declaradas en `DefinitionSubstitutions`.
+**Se preserva `isWrapperError: true`**, de modo que un fallo de Terraform se notifica a Service
+Catalog como fallo del producto pero la state machine termina en `Succeeded` — porque la
+notificación sí funcionó. El contrato con Service Catalog no cambia.
 
-### 3.4 El buildspec reproduce los overrides — verificado, no asumido
+### 3.5 El buildspec reproduce los overrides — verificado, no asumido
 
-Se reescribió `terraform_runner` (Python) como bash + `jq` dentro del buildspec. Para comprobar
-que la equivalencia es real, se ejecutaron **ambas implementaciones con los mismos inputs** y se
-compararon las salidas:
+`terraform_runner` (Python) se reescribió como bash + `jq`. Para comprobar la equivalencia se
+ejecutaron **ambas implementaciones con los mismos inputs** y se compararon:
 
 ```
 backend_override.tf.json  : IDÉNTICO
@@ -139,50 +158,40 @@ variable_override.tf.json : IDÉNTICO
 Incluye el caso borde de `write_variable_override`: un parámetro cuyo valor es JSON anidado se
 decodifica (`fromjson? // .value` en jq ≡ `json.loads` con fallback a string en Python).
 
-### 3.5 Bugs heredados del upstream que hubo que corregir
+---
 
-| # | Problema | Efecto | Fix |
+## 4. Problemas encontrados y cómo se resolvieron
+
+| # | Síntoma | Causa real | Solución |
 |---|---|---|---|
-| 1 | `GOARACH=amd64` (typo de `GOARCH`) en `build-ExternalParameterParser` | En un Mac ARM compilaba la Lambda para **aarch64** mientras el template declara `x86_64` → "exec format error" en runtime | Corregido el typo. Verificado con `file`: ambos binarios ahora `x86-64` |
-| 2 | 3 × `!ImportValue TerraformEngineBootstrapBucketArn` en policies marcadas "temporary" | El changeset fallaba con `AWS::EarlyValidation::ResourceExistenceCheck`: ese export no existe. Servía para alojar el wheel de `terraform_runner`, innecesario con CodeBuild | Bloques de policy eliminados |
-| 3 | `AWSLambdaVPCAccessExecutionRole` en 6 roles | Sin VPC ya no aplica | → `AWSLambdaBasicExecutionRole`, deduplicando las listas |
-| 4 | `AccessControl: Private` + 2 `DependsOn` redundantes | Warnings de lint heredados | Corregidos |
-
-### 3.6 Limpieza de la carpeta de Lambdas
-
-Se eliminaron paquetes vendorizados (`boto3/`, `botocore/`, `urllib3/`, `dateutil/`, `jmespath/`,
-`s3transfer/`, `bin/`) que había dejado un `pip install -t` local y que **no estaban versionados**.
-SAM los reinstala desde `requirements.txt`; dejarlos habría empaquetado un boto3 antiguo duplicado.
-
-Backup previo en el scratchpad. **Verificación posterior: 49/49 tests unitarios pasan**
-(42 en `state_machine_lambdas`, 7 en `provisioning-operations-handler`).
-
-### 3.7 Contrato con Service Catalog: intacto
-
-Sin cambios en las 3 colas SQS, el formato de mensajes, `DescribeProvisioningParameters`,
-`Notify*EngineWorkflowResult`, la lógica de los handlers SQS ni el Parameter Parser en Go.
+| 1 | `sam build` producía un binario ARM | `GOARACH` (typo de `GOARCH`) en el Makefile upstream: en un Mac Apple Silicon compilaba para el host, no para `x86_64` como declara la Lambda | Corregido el typo. `make verify` lo comprueba con `file(1)` en cada build |
+| 2 | Changeset fallaba con `AWS::EarlyValidation::ResourceExistenceCheck` | 3 policies marcadas "temporary" importaban `TerraformEngineBootstrapBucketArn`, un export inexistente. Alojaba el wheel de `terraform_runner`, innecesario con CodeBuild | Bloques eliminados |
+| 3 | Idem, segunda vuelta | Log groups `/aws/vendedlogs/states/*` huérfanos de un intento anterior | Borrados antes de aplicar |
+| 4 | Pipeline: `Unable to use Connection ... insufficient permissions` | La pipeline se autoejecuta al crearse, antes de que la política IAM propague. `simulate-principal-policy` confirmó que el permiso era correcto | Relanzar la ejecución |
+| 5 | Publish: `Value 'TERRAFORM_OPEN_SOURCE' failed to satisfy constraint` | **AWS retiró ese `productType` el 2023-12-14** y lo sustituyó por `EXTERNAL` | Publicar como `EXTERNAL`. El motor ya escuchaba ese flujo: las colas `ServiceCatalogExternal*` y el `ExternalParameterParser` existían para eso |
+| 6 | Publish: `Product type EXTERNAL requires DisableTemplateValidation set to true` | Requisito de la API para productos EXTERNAL | Añadido al `provisioning-artifact-parameters` |
+| 7 | Runner: `aws s3 cp` → `ParamValidation: Invalid argument type` | Service Catalog entrega la ruta como **`S3://`** en mayúsculas. El Python original troceaba el string (case-insensitive); `aws s3 cp` exige `s3://` | Separar bucket y key a mano y usar `aws s3api get-object`, replicando `artifact_manager.download_artifact` |
+| 8 | Producto en `ERROR` con el `apply` correcto | Service Catalog crea un **Resource Group** por producto asumiendo el Launch Role | Añadidos `resource-groups:*` y `tag:*` al Launch Role |
+| 9 | `terraform destroy` fallaba al borrar subredes | Faltaba `ec2:DescribeNetworkInterfaces` | Concedido `ec2:Describe*` (solo lectura) + `DeleteNetworkInterface`/`DetachNetworkInterface`, en vez de ir añadiendo acciones una a una |
 
 ---
 
-## 4. Comandos ejecutados
+## 5. Demo 1 — resultado de las pruebas E2E
 
-```bash
-# Verificación
-aws sts get-caller-identity
-gh auth status
-curl -H "Authorization: Bearer $TFE_TOKEN" https://app.terraform.io/api/v2/account/details
-
-# Demo 1 — motor
-cd demo1-terraform-os-engine/engine
-sam validate --region us-east-1 --lint      # -> valid SAM Template
-sam build                                    # -> Build Succeeded
-sam deploy                                   # stack aurex-demo1-terraform-engine
-
-# Tests
-pytest lambda-functions/state_machine_lambdas          # 42 passed
-pytest lambda-functions/provisioning-operations-handler # 7 passed
-
-# Módulo
-cd demo1-terraform-os-engine/catalog-modules/standard-environment
-terraform fmt -check -recursive && terraform init -backend=false && terraform validate
-```
+| Prueba | Resultado |
+|---|---|
+| `make bin` + arquitectura del binario Go | OK — `x86-64`, coincide con lo declarado |
+| Tests unitarios Python | **49/49 pasan** (42 state_machine_lambdas + 7 provisioning-operations-handler) |
+| `terraform validate` (engine, bootstrap, pipeline, módulo) | OK en los cuatro |
+| `terraform apply` engine | **87 recursos** creados |
+| `terraform apply` catalog-bootstrap | 4 recursos. Portfolio `port-v3ogqn5le7mns` |
+| `terraform apply` catalog-pipeline | 14 recursos |
+| Pipeline: Source (GitHub) | **Succeeded** |
+| Pipeline: Build/Validate | **Succeeded** — `fmt -check`, `validate`, y `.tf` verificados en la raíz del `.tar.gz` |
+| Pipeline: Publish | **Succeeded** — producto `prod-gsvtnjlcyhsce`, versión `v20260825-120238-3e2d8bd`, asociado al portfolio, Launch Constraint creado |
+| `DescribeProvisioningParameters` (parser Go) | **OK** — extrajo las 5 variables del módulo con descripciones y defaults |
+| Aprovisionamiento del producto | **AVAILABLE** |
+| Step Functions `ManageProvisionedProductStateMachine` | **SUCCEEDED** |
+| Recursos reales en AWS | VPC `vpc-0ee92c5f7291415e6` (10.40.0.0/16), 2 subredes en 2 AZ, bucket `aurexdemo1-storage-…`, rol `aurexdemo1-environment-access` |
+| Record outputs devueltos a Service Catalog | `vpc_id`, `subnet_ids`, `storage_bucket_name`, `access_role_arn` |
+| `TerminateProvisionedProduct` | **OK** — `terraform destroy` vía CodeBuild eliminó la VPC y el bucket |

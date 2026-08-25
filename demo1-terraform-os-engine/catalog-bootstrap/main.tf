@@ -91,8 +91,14 @@ data "aws_iam_policy_document" "launch_role_permissions" {
       "ec2:CreateRoute", "ec2:DeleteRoute",
       "ec2:AssociateRouteTable", "ec2:DisassociateRouteTable",
       "ec2:DescribeAvailabilityZones", "ec2:DescribeAccountAttributes",
-      "ec2:CreateTags", "ec2:DeleteTags", "ec2:DescribeTags",
-      "ec2:DescribeNetworkAcls", "ec2:DescribeSecurityGroups",
+      "ec2:CreateTags", "ec2:DeleteTags",
+      # El provider consulta muchas mas APIs Describe de las que se ven a simple
+      # vista (ENIs al borrar subredes, prefix lists, security group rules...).
+      # Describe* es solo lectura, asi que se concede en bloque en vez de ir
+      # anadiendo acciones una a una segun fallan.
+      "ec2:Describe*",
+      # Necesarias para que el destroy pueda vaciar las subredes
+      "ec2:DeleteNetworkInterface", "ec2:DetachNetworkInterface",
     ]
     resources = ["*"]
   }
@@ -129,6 +135,40 @@ data "aws_iam_policy_document" "launch_role_permissions" {
     sid       = "CallerIdentity"
     effect    = "Allow"
     actions   = ["sts:GetCallerIdentity"]
+    resources = ["*"]
+  }
+
+  # Service Catalog crea un Resource Group por producto aprovisionado, y lo hace
+  # asumiendo ESTE rol. Sin estos permisos el apply de Terraform funciona pero el
+  # producto acaba en ERROR: "not authorized to create the resource group".
+  # https://docs.aws.amazon.com/servicecatalog/latest/adminguide/getstarted-launchrole-Terraform.html
+  statement {
+    sid    = "ServiceCatalogResourceGroup"
+    effect = "Allow"
+    actions = [
+      "resource-groups:CreateGroup",
+      "resource-groups:DeleteGroup",
+      "resource-groups:GetGroup",
+      "resource-groups:GetGroupQuery",
+      "resource-groups:ListGroupResources",
+      "resource-groups:UpdateGroup",
+      "resource-groups:Tag",
+      "resource-groups:Untag",
+      "resource-groups:GetTags",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "ResourceTagging"
+    effect = "Allow"
+    actions = [
+      "tag:GetResources",
+      "tag:TagResources",
+      "tag:UntagResources",
+      "tag:GetTagKeys",
+      "tag:GetTagValues",
+    ]
     resources = ["*"]
   }
 

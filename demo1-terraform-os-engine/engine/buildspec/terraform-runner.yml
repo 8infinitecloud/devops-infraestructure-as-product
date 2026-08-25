@@ -52,12 +52,23 @@ phases:
         if [ "${ACTION}" = "apply" ]; then
           : "${ARTIFACT_PATH:?}"
           echo "== Descargando artefacto ${ARTIFACT_PATH} con el launch role =="
+          # Service Catalog entrega la ruta como "S3://bucket/key", con el esquema en
+          # MAYUSCULAS. "aws s3 cp" solo acepta "s3://", asi que se separan bucket y key
+          # a mano, igual que hacia artifact_manager.download_artifact:
+          #   bucket = artifact_path.split("/")[2]
+          #   key    = artifact_path.split("/", 3)[3]
+          ARTIFACT_NO_SCHEME="${ARTIFACT_PATH#*://}"
+          ARTIFACT_BUCKET="${ARTIFACT_NO_SCHEME%%/*}"
+          ARTIFACT_KEY="${ARTIFACT_NO_SCHEME#*/}"
+          echo "   bucket=${ARTIFACT_BUCKET}"
+
           CREDS="$(aws sts assume-role --role-arn "${LAUNCH_ROLE_ARN}" \
                     --role-session-name TerraformLaunchRole --query Credentials --output json)"
           AWS_ACCESS_KEY_ID="$(jq -r .AccessKeyId <<<"${CREDS}")" \
           AWS_SECRET_ACCESS_KEY="$(jq -r .SecretAccessKey <<<"${CREDS}")" \
           AWS_SESSION_TOKEN="$(jq -r .SessionToken <<<"${CREDS}")" \
-            aws s3 cp "${ARTIFACT_PATH}" "${WORKSPACE_DIR}/artifact.local"
+            aws s3api get-object --bucket "${ARTIFACT_BUCKET}" --key "${ARTIFACT_KEY}" \
+              "${WORKSPACE_DIR}/artifact.local" > /dev/null
           unset CREDS
 
           tar -xf artifact.local -C "${WORKSPACE_DIR}"
