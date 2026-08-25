@@ -454,3 +454,47 @@ roles y el secreto del motor. En HCP Terraform solo quedan los workspaces del us
 
 Sigue en pie el mismo resto de siempre: `test-s3-website-1787541361`, atascado en
 `UNDER_CHANGE` desde el 2026-08-23, sin recursos detrás y sin motor que lo pueda avanzar.
+
+---
+
+## 9. Verificación: ¿se comparten los productos EXTERNAL entre cuentas?
+
+Era la incógnita marcada como "verificar primero" en la sección 8.5, porque de ella dependía
+la premisa hub-and-spoke entera.
+
+### Respuesta: sí
+
+**Documentación.** El tutorial oficial de productos Terraform de AWS termina en
+*"Step 8: Share portfolio with end user (spoke account)"*, usando organization sharing desde
+la cuenta hub. No es un caso no soportado: es el flujo documentado.
+
+**Prueba empírica en la cuenta `058264353988`:**
+
+```bash
+aws servicecatalog enable-aws-organizations-access
+PF=$(aws servicecatalog create-portfolio --display-name aurex-share-probe ... )
+PRODUCT=$(aws servicecatalog create-product --product-type EXTERNAL ... )
+aws servicecatalog associate-product-with-portfolio --product-id $PRODUCT --portfolio-id $PF
+aws servicecatalog create-portfolio-share --portfolio-id $PF \
+    --organization-node Type=ORGANIZATION,Value=o-56ui6zshzw --share-principals
+aws servicecatalog create-portfolio-share --portfolio-id $PF \
+    --organization-node Type=ORGANIZATIONAL_UNIT,Value=ou-6jaf-f029ohvb
+```
+
+Ambos shares aceptados: `Accepted: True`, `SharePrincipals: True`. Después se borraron los
+shares, el producto, el portfolio, la OU y el bucket de prueba, y se devolvió
+`get-aws-organizations-access-status` a **DISABLED**, que era su estado original.
+
+### Lo que la verificación destapó, y que sí cambia el diseño
+
+| # | Hallazgo | Impacto |
+|---|---|---|
+| 1 | **Un solo motor EXTERNAL por cuenta hub.** `EXTERNAL` solo puede enrutar a un motor por cuenta | Restricción dura, sin rodeo. Dos motores EXTERNAL = dos cuentas hub. No afecta a tener las dos demos juntas: la Demo 2 usa `TERRAFORM_CLOUD`, otro tipo y otras colas |
+| 2 | **El Launch Role debe existir en cada spoke con el MISMO nombre**, y el constraint debe usar `LocalRoleName` en vez de `RoleArn` | `modules/catalog-pipeline/buildspec/publish.yml` publica hoy `{"RoleArn": ...}`. Correcto en monocuenta; hay que cambiarlo para hub-and-spoke |
+| 3 | **Los nombres de Launch Role deben empezar por `SCLaunch`** | Los de este repo no lo cumplen. Funcionan porque el `iam:PassRole` se concede explícito, pero el prefijo importa para las políticas gestionadas de end-user |
+| 4 | AWS documenta la confianza del rol spoke como root del hub + condición `ArnLike` sobre `aws:PrincipalArn` | `catalog-bootstrap-hcp-terraform` ya usa esa forma; `catalog-bootstrap-terraform-os` usa ARN directos — equivalente en monocuenta, conviene alinearlo |
+| 5 | El contrato EXTERNAL documenta el campo `identity` como *"currently not used"* | El motor keya el state en `{identity.awsAccountId}/{provisionedProductId}`. Empíricamente llega poblado, pero conviene verificarlo antes de apoyarse en él para multicuenta |
+
+Con esto, de las tres advertencias de la sección 8.5 queda **una desmentida** (el sharing
+funciona) y **dos en pie** (`for_each` sobre providers, y el OIDC provider por cuenta), más
+estas cinco nuevas que solo salen al mirar la documentación del contrato de cerca.
