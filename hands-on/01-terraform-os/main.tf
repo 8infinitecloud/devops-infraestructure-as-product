@@ -21,6 +21,11 @@ module "engine" {
   source = "../../modules/terraform-os-engine"
 
   terraform_cli_version = var.terraform_cli_version
+
+  # Puerta de coste en el aprovisionamiento, sobre el plan real.
+  # Con "0" estima y registra pero no bloquea; ponle un tope para que aborte.
+  infracost_api_key_secret_arn = var.infracost_api_key_secret_arn
+  infracost_max_monthly_usd    = var.infracost_max_monthly_usd
 }
 
 module "catalog_bootstrap" {
@@ -55,4 +60,9 @@ module "catalog_pipeline" {
   existing_connection_arn = var.existing_connection_arn
   module_source_path      = "modules/standard-environment"
   terraform_cli_version   = var.terraform_cli_version
+
+  # Etapa Inspect + aprobacion manual
+  policy_source_path           = "policies"
+  infracost_api_key_secret_arn = var.infracost_api_key_secret_arn
+  require_manual_approval      = var.require_manual_approval
 }

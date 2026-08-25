@@ -139,6 +139,22 @@ resource "aws_codebuild_project" "terraform_runner" {
       name  = "TRACER_TAG_JSON"
       value = "{}"
     }
+
+    environment_variable {
+      name  = "INFRACOST_MAX_MONTHLY_USD"
+      value = var.infracost_max_monthly_usd
+    }
+
+    # La API key se resuelve desde Secrets Manager en ejecucion: no viaja en el
+    # buildspec, ni en el state, ni en los logs del build.
+    dynamic "environment_variable" {
+      for_each = var.infracost_api_key_secret_arn != "" ? [1] : []
+      content {
+        name  = "INFRACOST_API_KEY"
+        value = "${var.infracost_api_key_secret_arn}:api_key"
+        type  = "SECRETS_MANAGER"
+      }
+    }
   }
 
   logs_config {
@@ -152,4 +168,19 @@ resource "aws_codebuild_project" "terraform_runner" {
     type      = "NO_SOURCE"
     buildspec = file("${path.module}/buildspec/terraform-runner.yml")
   }
+}
+
+resource "aws_iam_role_policy" "codebuild_runner_infracost_secret" {
+  count = var.infracost_api_key_secret_arn != "" ? 1 : 0
+
+  name = "ReadInfracostApiKey"
+  role = aws_iam_role.codebuild_runner.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = var.infracost_api_key_secret_arn
+    }]
+  })
 }

@@ -32,3 +32,21 @@ variable "terraform_cli_version" {
   description = "Version de Terraform que usa el runner y la validacion"
   default     = "1.5.7"
 }
+
+variable "infracost_api_key_secret_arn" {
+  type        = string
+  description = "ARN del secreto de Secrets Manager con la API key de Infracost. Vacio = sin estimacion de coste."
+  default     = ""
+}
+
+variable "require_manual_approval" {
+  type        = bool
+  description = "Aprobacion manual en CodePipeline antes de publicar el producto"
+  default     = true
+}
+
+variable "infracost_max_monthly_usd" {
+  type        = string
+  description = "Coste mensual maximo por producto aprovisionado. \"0\" = advisory."
+  default     = "0"
+}

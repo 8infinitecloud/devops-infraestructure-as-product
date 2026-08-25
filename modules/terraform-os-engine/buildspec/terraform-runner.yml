@@ -13,6 +13,13 @@ phases:
         chmod +x /usr/local/bin/terraform
         terraform version
         command -v jq >/dev/null || { apt-get update -qq && apt-get install -y -qq jq; }
+        if [ -n "${INFRACOST_API_KEY:-}" ]; then
+          INFRACOST_V=0.10.45
+          curl -sSL "https://github.com/infracost/infracost/releases/download/v${INFRACOST_V}/infracost-linux-amd64.tar.gz" \
+            | tar -xz -C /tmp
+          mv /tmp/infracost-linux-amd64 /usr/local/bin/infracost
+          infracost --version
+        fi
   build:
     commands:
       - |
@@ -93,11 +100,38 @@ phases:
 
         terraform init -no-color
         terraform validate -no-color
-        if [ "${ACTION}" = "apply" ]; then
-          terraform apply -auto-approve -input=false -compact-warnings -no-color
-        else
+
+        if [ "${ACTION}" = "destroy" ]; then
           terraform destroy -auto-approve -no-color
+          exit 0
         fi
+
+        # --- Plan primero -------------------------------------------------------
+        # Se aplica el plan GUARDADO, no un apply suelto: asi lo que se estima de
+        # coste es exactamente lo que se despliega.
+        terraform plan -out=tfplan -input=false -compact-warnings -no-color
+
+        # --- Puerta de coste sobre el plan REAL ---------------------------------
+        # A diferencia de la pipeline, aqui ya existen los parametros que eligio el
+        # usuario final. Es el unico sitio donde el coste se puede gobernar de verdad.
+        if [ -n "${INFRACOST_API_KEY:-}" ]; then
+          terraform show -json tfplan > tfplan.json
+          infracost breakdown --path tfplan.json --format json --out-file infracost.json
+          infracost breakdown --path tfplan.json --format table || true
+
+          MONTHLY="$(jq -r '.totalMonthlyCost // "0"' infracost.json)"
+          echo "== Coste mensual estimado: USD ${MONTHLY} =="
+
+          LIMIT="${INFRACOST_MAX_MONTHLY_USD:-0}"
+          if [ "${LIMIT}" != "0" ] && awk "BEGIN{exit !(${MONTHLY} > ${LIMIT})}"; then
+            echo "PRESUPUESTO EXCEDIDO: USD ${MONTHLY}/mes supera el limite de USD ${LIMIT}/mes." >&2
+            echo "Se detiene antes de crear ningun recurso." >&2
+            exit 1
+          fi
+          [ "${LIMIT}" = "0" ] && echo "   (advisory: INFRACOST_MAX_MONTHLY_USD=0, no bloquea)"
+        fi
+
+        terraform apply -input=false -compact-warnings -no-color tfplan
   post_build:
     commands:
       - rm -rf "/tmp/workspaces/${PP_DESCRIPTOR}" || true

@@ -61,3 +61,27 @@ variable "log_retention_days" {
   description = "Retencion de los log groups del motor"
   default     = 30
 }
+
+# ---------------------------------------------------------------------------
+# Puerta de coste en tiempo de aprovisionamiento.
+#
+# A diferencia de la pipeline, aqui ya existe un terraform plan con los
+# parametros que eligio el usuario final, asi que la estimacion es la del
+# despliegue real y no la del modulo con sus valores por defecto.
+# ---------------------------------------------------------------------------
+
+variable "infracost_api_key_secret_arn" {
+  type        = string
+  description = "ARN del secreto con la API key de Infracost, formato {\"api_key\":\"ico-...\"}. Vacio = sin estimacion."
+  default     = ""
+}
+
+variable "infracost_max_monthly_usd" {
+  type        = string
+  description = <<-EOT
+    Coste mensual maximo (USD) por producto aprovisionado.
+    "0" = advisory: se estima y se registra, pero no se bloquea.
+    Cualquier otro valor ABORTA el aprovisionamiento antes de crear recursos.
+  EOT
+  default     = "0"
+}

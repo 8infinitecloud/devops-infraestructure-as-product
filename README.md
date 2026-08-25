@@ -229,3 +229,71 @@ El motor ya está diseñado para esto. El rol de CodeBuild tiene `sts:AssumeRole
 las cuentas, y el backend S3 usa las credenciales del hub mientras el provider `aws` asume
 el Launch Role del spoke: **el state se queda en el hub y los recursos aterrizan en el
 spoke.**
+
+## Gobierno del catálogo: inspección y coste
+
+Un producto de catálogo necesita puertas de calidad, igual que cualquier otro producto.
+Aquí hay **dos**, y confundirlas es el error habitual:
+
+| | Puerta de publicación | Puerta de aprovisionamiento |
+|---|---|---|
+| Dónde | Etapa `Inspect` de `catalog-pipeline` | `TerraformEngineRunner`, antes del `apply` |
+| Qué ve | El módulo con sus valores **por defecto** | El `terraform plan` real, con los parámetros del usuario |
+| Pregunta | ¿Este producto entra al catálogo? | ¿Este despliegue concreto se permite? |
+| Herramientas | Checkov, TFLint, Gitleaks, Conftest, Infracost (indicativo) | Infracost sobre el plan |
+
+**Por qué importa la distinción.** Si estimas el coste solo al publicar, lo haces con
+`subnet_count = 2` y el CIDR por defecto. Si el usuario aprovisiona con otra cosa, tu
+estimación no lo vio. El coste solo se gobierna de verdad en la segunda puerta.
+
+### Etapa `Inspect`
+
+```
+Source → BuildValidate → Inspect → Approve → Publish
+```
+
+- **Checkov** — misconfiguraciones. Emite JUnit, así que aparece como reporte nativo en la
+  consola de CodeBuild, no enterrado en el log.
+- **TFLint** — argumentos deprecados, tipos inválidos, reglas del provider AWS.
+- **Gitleaks** — secretos commiteados. Escanea el repo entero, no solo el módulo.
+- **Conftest/OPA** — las políticas de Aurex, en [`policies/`](policies/). Es lo que
+  distingue este pipeline de uno genérico.
+- **Infracost** — estimación indicativa del módulo.
+
+**Es advisory por diseño: ningún hallazgo detiene la pipeline.** Los reportes se publican y
+quien decide es la aprobación manual de la etapa `Approve`. Los chequeos informan, la
+persona decide. Para hacerla bloqueante, quita los `|| true` y el `exit 0` de
+`modules/catalog-pipeline/buildspec/inspect.yml`.
+
+### Puerta de coste en el aprovisionamiento
+
+El runner pasa de `apply` directo a **`plan` → estimar → `apply` del plan guardado**. Se
+aplica el plan que se costeó, no otro.
+
+```hcl
+infracost_max_monthly_usd = "0"    # advisory: estima y registra
+infracost_max_monthly_usd = "50"   # aborta antes de crear nada si se pasa
+```
+
+> **Asimetría a tener en cuenta:** el hands-on 02 **no tiene esta puerta**. Su `apply` corre
+> en un workspace de HCP Terraform, no en un CodeBuild de esta cuenta, así que no hay dónde
+> interceptar el plan. El equivalente sería una *run task* o una policy **Sentinel** en el
+> workspace.
+
+### Requisitos
+
+Infracost necesita una API key (gratuita) en Secrets Manager, con formato
+`{"api_key":"ico-..."}`. CodeBuild la resuelve en ejecución: no viaja en el buildspec, ni en
+el state, ni en los logs.
+
+```hcl
+infracost_api_key_secret_arn = "arn:aws:secretsmanager:...:secret:aurex/infracost-XXXX"
+```
+
+Sin ella, la estimación se omite y el resto de la inspección funciona igual.
+
+### Versiones fijadas a propósito
+
+Las herramientas se instalan desde tarballs de release **con versión fijada**, no con
+`curl | sh` de un script en `master`. Una pipeline que audita seguridad no debería
+introducir el mismo riesgo de cadena de suministro que se supone que detecta.

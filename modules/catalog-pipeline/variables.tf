@@ -98,3 +98,38 @@ variable "log_retention_days" {
   default     = 30
   description = "Retencion de los log groups de la pipeline"
 }
+
+# ---------------------------------------------------------------------------
+# Etapa de inspeccion: seguridad, politica y coste.
+#
+# Es ADVISORY por diseno: los hallazgos se reportan pero no detienen la pipeline.
+# Quien decide es la aprobacion manual de la etapa siguiente.
+# ---------------------------------------------------------------------------
+
+variable "policy_source_path" {
+  type        = string
+  description = "Ruta en el repo a las politicas Rego que evalua Conftest"
+  default     = "policies"
+}
+
+variable "infracost_api_key_secret_arn" {
+  type        = string
+  description = <<-EOT
+    ARN del secreto de Secrets Manager con la API key de Infracost.
+    Formato esperado del secreto: {"api_key":"ico-..."}.
+    Vacio = se omite la estimacion de coste.
+  EOT
+  default     = ""
+}
+
+variable "require_manual_approval" {
+  type        = bool
+  description = "Anade una aprobacion manual en CodePipeline antes de publicar el producto"
+  default     = true
+}
+
+variable "approval_notification_arn" {
+  type        = string
+  description = "Topic SNS opcional al que notificar cuando haya una aprobacion pendiente"
+  default     = ""
+}

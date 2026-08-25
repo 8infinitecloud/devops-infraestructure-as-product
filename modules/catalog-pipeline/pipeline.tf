@@ -258,6 +258,45 @@ resource "aws_codepipeline" "this" {
   }
 
   stage {
+    name = "Inspect"
+    action {
+      name             = "SecurityPolicyAndCost"
+      category         = "Build"
+      owner            = "AWS"
+      provider         = "CodeBuild"
+      version          = "1"
+      input_artifacts  = ["SourceCode"]
+      output_artifacts = ["InspectionReports"]
+
+      configuration = {
+        ProjectName = aws_codebuild_project.inspect.name
+      }
+    }
+  }
+
+  # Los chequeos automaticos informan; aqui decide una persona.
+  dynamic "stage" {
+    for_each = var.require_manual_approval ? [1] : []
+    content {
+      name = "Approve"
+      action {
+        name     = "RevisarHallazgos"
+        category = "Approval"
+        owner    = "AWS"
+        provider = "Manual"
+        version  = "1"
+
+        configuration = merge(
+          {
+            CustomData = "Revisa los reportes de la etapa Inspect (Checkov, TFLint, Gitleaks, Conftest, Infracost) antes de publicar el producto en Service Catalog."
+          },
+          var.approval_notification_arn != "" ? { NotificationArn = var.approval_notification_arn } : {}
+        )
+      }
+    }
+  }
+
+  stage {
     name = "Publish"
     action {
       name            = "ServiceCatalogPublish"
@@ -274,4 +313,75 @@ resource "aws_codepipeline" "this" {
   }
 
   depends_on = [aws_iam_role_policy.pipeline]
+}
+
+# --- Etapa Inspect ----------------------------------------------------------
+
+resource "aws_cloudwatch_log_group" "inspect" {
+  name              = "/aws/codebuild/${var.name_prefix}-inspect"
+  retention_in_days = var.log_retention_days
+}
+
+resource "aws_codebuild_project" "inspect" {
+  name          = "${var.name_prefix}-inspect"
+  description   = "Checkov, TFLint, Gitleaks, Conftest e Infracost sobre el modulo a publicar"
+  service_role  = aws_iam_role.codebuild.arn
+  build_timeout = 30
+
+  artifacts {
+    type = "CODEPIPELINE"
+  }
+
+  environment {
+    type         = "LINUX_CONTAINER"
+    compute_type = "BUILD_GENERAL1_SMALL"
+    image        = "aws/codebuild/standard:7.0"
+
+    environment_variable {
+      name  = "MODULE_PATH"
+      value = var.module_source_path
+    }
+    environment_variable {
+      name  = "POLICY_PATH"
+      value = var.policy_source_path
+    }
+
+    # La API key nunca viaja en el buildspec ni en el state: CodeBuild la
+    # resuelve desde Secrets Manager en tiempo de ejecucion.
+    dynamic "environment_variable" {
+      for_each = var.infracost_api_key_secret_arn != "" ? [1] : []
+      content {
+        name  = "INFRACOST_API_KEY"
+        value = "${var.infracost_api_key_secret_arn}:api_key"
+        type  = "SECRETS_MANAGER"
+      }
+    }
+  }
+
+  logs_config {
+    cloudwatch_logs {
+      status     = "ENABLED"
+      group_name = aws_cloudwatch_log_group.inspect.name
+    }
+  }
+
+  source {
+    type      = "CODEPIPELINE"
+    buildspec = file("${path.module}/buildspec/inspect.yml")
+  }
+}
+
+resource "aws_iam_role_policy" "codebuild_infracost_secret" {
+  count = var.infracost_api_key_secret_arn != "" ? 1 : 0
+
+  name = "ReadInfracostApiKey"
+  role = aws_iam_role.codebuild.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = var.infracost_api_key_secret_arn
+    }]
+  })
 }
