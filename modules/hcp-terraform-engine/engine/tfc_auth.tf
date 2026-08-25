@@ -21,6 +21,18 @@ resource "tfe_team_token" "test_team_token" {
 
 resource "aws_secretsmanager_secret" "team_token_values" {
   name = "terraform-cloud-credentials-for-service-catalog-engine"
+
+  # Anadido sobre el modulo upstream.
+  #
+  # Por defecto, destroy deja el secreto en ventana de recuperacion 30 dias, y
+  # el nombre queda BLOQUEADO: el siguiente apply falla con
+  #   "a secret with this name is already scheduled for deletion".
+  # Para un taller que se monta y desmonta en cada pase eso lo hace
+  # irrepetible. Con 0 el destroy lo purga y el motor vuelve a desplegarse.
+  #
+  # En produccion querrias el valor por defecto: esto renuncia a poder
+  # recuperar el secreto tras borrarlo.
+  recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "tfc_credentials" {
