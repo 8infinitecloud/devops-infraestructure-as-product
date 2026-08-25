@@ -27,17 +27,36 @@ que consume un equipo no depende de cómo se ejecuta por debajo.
 
 ## Estructura
 
-Cada demo tiene las mismas 4 carpetas:
+Módulos reutilizables por un lado, entornos que los componen por otro.
 
-| Carpeta | Qué contiene |
-|---|---|
-| `engine/` | El motor: colas SQS, Lambdas, Step Functions y el cómputo que ejecuta Terraform |
-| `catalog-bootstrap/` | Portfolio de Service Catalog y Launch Role |
-| `catalog-pipeline/` | CodeConnections + CodePipeline: Source → Build/Validate → Publish |
-| `catalog-modules/` | El módulo `standard-environment` |
+```
+modules/
+  terraform-os-engine/              motor Demo 1: SQS, Lambdas, Step Functions, CodeBuild
+  hcp-terraform-engine/             motor Demo 2: envuelve el módulo de HashiCorp
+  catalog-bootstrap-terraform-os/   Portfolio + Launch Role
+  catalog-bootstrap-hcp-terraform/  Launch Role + acceso (el Portfolio lo crea el motor)
+  catalog-pipeline/                 CodePipeline — UNO SOLO para las dos demos
+  standard-environment/             el módulo de producto: red + almacenamiento + rol
 
-`demo2-hcp-terraform-engine/catalog-modules/` **no duplica el módulo**: apunta al de la
-Demo 1. Ver su `README.md`.
+live/
+  demo1/    compone engine + bootstrap + pipeline con un provider
+  demo2/    igual, con el motor de HCP Terraform
+```
+
+Tres reglas que hacen que esto componga:
+
+- **Ningún módulo declara `provider`.** Solo `required_providers`. El provider lo
+  configura el root. Eso es lo que permitirá añadir multicuenta con
+  `providers = { aws = aws.spoke }` sin tocar un módulo.
+- **Ningún módulo lee `terraform_remote_state`.** Los ARNs del motor entran como
+  variables. La versión anterior leía `../engine/terraform.tfstate` con backend local:
+  funcionaba en una máquina y en ninguna otra.
+- **`catalog-pipeline` es un solo módulo.** Antes había dos copias que solo diferían en
+  el tipo de producto; ahora es la variable `product_type` (`EXTERNAL` para el motor
+  Terraform OS, `TERRAFORM_CLOUD` para el de HCP Terraform).
+
+`standard-environment` es **el mismo módulo para las dos demos**: ambas pipelines apuntan
+a `modules/standard-environment`. No hay copia.
 
 ## Qué cambia entre las dos demos
 
@@ -84,12 +103,11 @@ Requisitos: `terraform >= 1.5`, `go`, `python3`, `aws-cli`, credenciales de AWS 
 ### Demo 1
 
 ```bash
-cd demo1-terraform-os-engine/engine/lambda-functions && make bin   # ← imprescindible
-cd .. && terraform init && terraform apply
-
-cd ../catalog-bootstrap && terraform init && terraform apply
-cd ../catalog-pipeline  && terraform init && terraform apply
+cd modules/terraform-os-engine/lambda-functions && make bin   # ← imprescindible
+cd ../../../live/demo1 && terraform init && terraform apply
 ```
+
+Un solo `apply`: Terraform ordena motor → bootstrap → pipeline por dependencias.
 
 `make bin` empaqueta las Lambdas (`pip install -r requirements.txt -t .` para Python,
 `go build` para Go). Terraform no compila nada: `archive_file` lee `build/` en tiempo de
@@ -98,12 +116,11 @@ plan. Si se olvida, el `apply` falla con un mensaje explícito, no con un zip va
 ### Demo 2
 
 ```bash
-cd demo2-hcp-terraform-engine/engine/engine/lambda-functions && make bin
-cd ../.. && terraform init && terraform apply
-
-cd ../catalog-bootstrap && terraform init && terraform apply
-cd ../catalog-pipeline  && terraform init && terraform apply
+cd modules/hcp-terraform-engine/engine/lambda-functions && make bin
+cd ../../../../live/demo2 && terraform init && terraform apply
 ```
+
+Requiere `TFE_TOKEN` en el entorno.
 
 ## Limpieza
 
@@ -112,9 +129,7 @@ destruye el motor primero, no queda nada capaz de ejecutar el `destroy`:
 
 ```bash
 aws servicecatalog terminate-provisioned-product --provisioned-product-id <pp-...>
-cd catalog-pipeline  && terraform destroy
-cd ../catalog-bootstrap && terraform destroy
-cd ../engine         && terraform destroy
+cd live/demo1 && terraform destroy   # el orden inverso lo resuelve Terraform
 ```
 
 El producto de Service Catalog lo crea la pipeline por CLI, no Terraform, así que hay que
@@ -124,5 +139,28 @@ borrarlo aparte (constraint → desasociar → `delete-product`).
 
 - **[`WORKSHOP-LOG.md`](WORKSHOP-LOG.md)** — historial completo: cada decisión, cada
   comando, y los 9 problemas que hubo que resolver para que el E2E funcionara.
-- **[`demo2-hcp-terraform-engine/MEJORA-PENDIENTE-webhook.md`](demo2-hcp-terraform-engine/MEJORA-PENDIENTE-webhook.md)** —
+- **[`docs/MEJORA-PENDIENTE-webhook.md`](docs/MEJORA-PENDIENTE-webhook.md)** —
   diseño para sustituir el polling de `poll-run-status` por webhooks con firma HMAC-SHA512.
+
+
+## Sobre multicuenta
+
+Los módulos están escritos para que hub-and-spoke sea un cambio en `live/`, no un
+rewrite: se añaden alias de provider y se pasan con `providers = {}`. **No está
+implementado ni probado** — hay una sola cuenta en la organización.
+
+Tres cosas a tener en cuenta antes de intentarlo:
+
+1. **Terraform no puede hacer `for_each` sobre un provider.** N cuentas son N root
+   modules y N applies, orquestados desde CI. No hay forma de expresarlo en un solo apply.
+2. **La Demo 2 necesita un OIDC provider de `app.terraform.io` en cada cuenta spoke** —
+   es un recurso IAM por cuenta. La Demo 1 no tiene ese problema.
+3. **Verificar primero** que los productos `EXTERNAL` y `TERRAFORM_CLOUD` se comparten
+   entre cuentas vía portfolio share igual que los de CloudFormation. Si no, la premisa
+   hub-and-spoke para estas demos cambia de raíz.
+
+A favor: el motor ya está diseñado para ello. La clave del state es
+`{accountId}/{provisionedProductId}` —namespaceada por cuenta—, el rol de CodeBuild ya
+tiene `sts:AssumeRole` sobre `arn:aws:iam::*:role/*`, y el backend S3 usa las credenciales
+del hub mientras el provider `aws` asume el Launch Role del spoke. El state se queda en el
+hub y los recursos aterrizan en el spoke.
