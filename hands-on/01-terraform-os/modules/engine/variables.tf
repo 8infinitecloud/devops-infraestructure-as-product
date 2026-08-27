@@ -52,8 +52,24 @@ variable "runner_timeout_minutes" {
 
 variable "runner_concurrent_build_limit" {
   type        = number
-  description = "Builds simultaneos maximos. Equivale al tamano del antiguo Auto Scaling Group."
-  default     = 10
+  description = <<-EOT
+    Builds simultaneos maximos. Equivale al tamano del antiguo Auto Scaling Group
+    del motor original de AWS.
+
+    Es el cuello de botella del aprovisionamiento: el que hace el numero N+1 no
+    falla, espera. Con un taller de 30 personas lanzando a la vez, 10 los pondria
+    en cola de tres en tres.
+
+    TOPE: no puede superar la cuota de cuenta de CodeBuild para el compute_type
+    que use el runner. Para BUILD_GENERAL1_SMALL son 60 por defecto. Ponerlo mas
+    alto no da un aviso: hace fallar el apply. Comprueba la tuya con
+
+        aws service-quotas list-service-quotas --service-code codebuild \
+          --query 'Quotas[?contains(QuotaName, `Linux/Small`)].Value'
+
+    y pide un aumento en la consola de Service Quotas si necesitas mas.
+  EOT
+  default     = 60
 }
 
 variable "log_retention_days" {

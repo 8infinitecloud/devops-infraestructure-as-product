@@ -28,8 +28,6 @@ resource "aws_iam_role_policy" "provisioning_handler_sqs" {
       Effect = "Allow"
       Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
       Resource = [
-        aws_sqs_queue.operations["terraform_provision"].arn,
-        aws_sqs_queue.operations["terraform_update"].arn,
         aws_sqs_queue.operations["external_provision"].arn,
         aws_sqs_queue.operations["external_update"].arn,
       ]
@@ -85,7 +83,7 @@ resource "aws_lambda_function" "provisioning_handler" {
 }
 
 resource "aws_lambda_event_source_mapping" "provisioning_handler" {
-  for_each = toset(["terraform_provision", "terraform_update", "external_provision", "external_update"])
+  for_each = toset(["external_provision", "external_update"])
 
   event_source_arn                   = aws_sqs_queue.operations[each.key].arn
   function_name                      = aws_lambda_function.provisioning_handler.arn
@@ -119,7 +117,6 @@ resource "aws_iam_role_policy" "terminate_handler_sqs" {
       Effect = "Allow"
       Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
       Resource = [
-        aws_sqs_queue.operations["terraform_terminate"].arn,
         aws_sqs_queue.operations["external_terminate"].arn,
       ]
     }]
@@ -174,7 +171,7 @@ resource "aws_lambda_function" "terminate_handler" {
 }
 
 resource "aws_lambda_event_source_mapping" "terminate_handler" {
-  for_each = toset(["terraform_terminate", "external_terminate"])
+  for_each = toset(["external_terminate"])
 
   event_source_arn                   = aws_sqs_queue.operations[each.key].arn
   function_name                      = aws_lambda_function.terminate_handler.arn

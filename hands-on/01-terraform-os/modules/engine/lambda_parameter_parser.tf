@@ -7,11 +7,9 @@
 # ---------------------------------------------------------------------------
 
 locals {
+  # Solo el de EXTERNAL: el legacy de TERRAFORM_OPEN_SOURCE se elimino con sus
+  # colas. Ver la nota en sqs.tf.
   parameter_parsers = {
-    terraform_os = {
-      function_name = "ServiceCatalogTerraformOSParameterParser"
-      role_name     = "ServiceCatalogTerraformOSParameterParserRole-${local.region}"
-    }
     external = {
       function_name = "ServiceCatalogExternalParameterParser"
       role_name     = "ServiceCatalogExternalParameterParserRole-${local.region}"

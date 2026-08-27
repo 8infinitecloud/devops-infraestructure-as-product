@@ -43,20 +43,35 @@ resource "aws_kms_key" "queue" {
   tags = { Name = "TerraformEngineSQSEncryptionKey" }
 }
 
+# La DLQ NO es legacy pese al nombre: la comparten las tres colas. Se conserva el
+# nombre heredado a proposito — renombrarla la recrearia, y con ella se perderian
+# los mensajes muertos que hubiera dentro esperando diagnostico.
 resource "aws_sqs_queue" "dlq" {
   name              = "ServiceCatalogTerraformOSOperationsDLQ"
   kms_master_key_id = aws_kms_key.queue.id
 }
 
+# ---------------------------------------------------------------------------
+# DESVIACION DEL MOTOR DE REFERENCIA DE AWS.
+#
+# El motor original crea todo por duplicado: una version para productos
+# TERRAFORM_OPEN_SOURCE y otra para EXTERNAL. AWS retiro el primer tipo el
+# 2023-12-14 y ya no se acepta en CreateProduct, asi que esa mitad no puede
+# recibir nada: verificado en la cuenta, cero mensajes.
+#
+# Aqui se ha eliminado. Si alguna vez hay que reintroducirla —productos
+# publicados antes de esa fecha—, hay que volver a anadir las tres colas, sus
+# event source mappings, los permisos de los dos handlers y el parameter parser
+# legacy.
+# ---------------------------------------------------------------------------
+
 locals {
-  # Las 6 colas del contrato: 3 para productos TERRAFORM_OPEN_SOURCE y 3 para EXTERNAL
+  # Las 3 colas del contrato, una por operacion. Service Catalog las descubre por
+  # NOMBRE EXACTO: renombrarlas rompe el enrutado sin dar ningun error visible.
   operation_queues = {
-    terraform_provision = "ServiceCatalogTerraformOSProvisionOperationQueue"
-    terraform_update    = "ServiceCatalogTerraformOSUpdateOperationQueue"
-    terraform_terminate = "ServiceCatalogTerraformOSTerminateOperationQueue"
-    external_provision  = "ServiceCatalogExternalProvisionOperationQueue"
-    external_update     = "ServiceCatalogExternalUpdateOperationQueue"
-    external_terminate  = "ServiceCatalogExternalTerminateOperationQueue"
+    external_provision = "ServiceCatalogExternalProvisionOperationQueue"
+    external_update    = "ServiceCatalogExternalUpdateOperationQueue"
+    external_terminate = "ServiceCatalogExternalTerminateOperationQueue"
   }
 }
 
