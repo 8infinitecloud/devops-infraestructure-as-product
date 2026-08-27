@@ -27,6 +27,25 @@ variable "github_branch" {
   default     = "main"
 }
 
+variable "existing_oidc_provider_arn" {
+  type        = string
+  description = <<-EOT
+    ARN de un proveedor OIDC de GitHub que YA exista en la cuenta.
+
+    Es un recurso POR CUENTA y AWS solo admite uno por URL: si ya hay uno —de
+    otro proyecto, de otro repositorio— crear otro falla con EntityAlreadyExists.
+    Es un fallo muy comun porque no se ve venir: el proveedor es global y no
+    aparece en ningun sitio del taller.
+
+    Comprueba si lo tienes:
+
+        aws iam list-open-id-connect-providers
+
+    Vacio => se crea uno nuevo.
+  EOT
+  default     = ""
+}
+
 variable "role_name" {
   type        = string
   description = "Nombre del rol que asumen los workflows"

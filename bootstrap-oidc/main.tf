@@ -12,6 +12,13 @@
 #
 #     cd bootstrap-oidc
 #     terraform init
+#
+#     # Si tu cuenta YA tiene el proveedor OIDC de GitHub, pasalo:
+#     aws iam list-open-id-connect-providers
+#     terraform apply -var github_org=TU-ORG \
+#       -var existing_oidc_provider_arn=arn:aws:iam::<cuenta>:oidc-provider/token.actions.githubusercontent.com
+#
+#     # Si no lo tiene, se crea solo:
 #     terraform apply -var github_org=TU-ORG
 #     gh variable set AWS_DEPLOY_ROLE_ARN --body "$(terraform output -raw role_arn)"
 #
@@ -22,13 +29,30 @@
 
 data "aws_partition" "current" {}
 
+locals {
+  create_provider = var.existing_oidc_provider_arn == ""
+  provider_arn = local.create_provider ? (
+    aws_iam_openid_connect_provider.github[0].arn
+  ) : var.existing_oidc_provider_arn
+}
+
 # --- Confianza con GitHub ----------------------------------------------------
 # Sustituye a una clave de acceso: GitHub presenta un token firmado y AWS lo
 # cambia por credenciales temporales de una hora.
+#
+# OJO: esto NO crea "el OIDC de GitHub" —ese es de GitHub y existe siempre—. Lo
+# que crea es el registro de que TU CUENTA confia en ese emisor. Es un recurso
+# por cuenta, y solo cabe uno por URL: si ya lo tienes de otro proyecto, pasa su
+# ARN en existing_oidc_provider_arn o el apply falla.
 
 resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
+  count = local.create_provider ? 1 : 0
+
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
+
+  # AWS ya no valida esta huella para GitHub —confia en la CA publica— pero el
+  # argumento sigue siendo obligatorio.
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
@@ -39,7 +63,7 @@ data "aws_iam_policy_document" "assume" {
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [local.provider_arn]
     }
 
     # Sin esta condicion, CUALQUIER repositorio de GitHub podria asumir el rol.

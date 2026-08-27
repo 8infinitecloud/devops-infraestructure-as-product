@@ -226,9 +226,29 @@ no puede creárselo— con un apply que haces tú:
 
 ```bash
 cd bootstrap-oidc
-terraform init && terraform apply -var github_org=TU-ORG
+terraform init
+
+# ¿Tu cuenta ya tiene el proveedor OIDC de GitHub? Comprúebalo primero:
+aws iam list-open-id-connect-providers
+
+# Si sale uno de token.actions.githubusercontent.com, pásalo:
+terraform apply -var github_org=TU-ORG \
+  -var existing_oidc_provider_arn=arn:aws:iam::<cuenta>:oidc-provider/token.actions.githubusercontent.com
+
+# Si no sale ninguno, se crea solo:
+terraform apply -var github_org=TU-ORG
+
 gh variable set AWS_DEPLOY_ROLE_ARN --body "$(terraform output -raw role_arn)"
 ```
+
+> Ese `list-open-id-connect-providers` no es opcional. El proveedor OIDC es un recurso **por
+> cuenta** y AWS solo admite uno por URL: si ya lo tienes de otro proyecto, crear otro falla
+> con `EntityAlreadyExists`. No se ve venir, porque el proveedor es global y no aparece en
+> ninguna parte del taller.
+>
+> Y ojo con no confundirlo con el **otro** OIDC del repo: el motor del Hands-on 2 crea uno
+> para `app.terraform.io`, que es cómo un workspace de HCP Terraform entra en tu cuenta a
+> aprovisionar. Distinta URL, distinto propósito, y conviven sin chocar.
 
 Ese módulo acota la confianza a **un repositorio y una rama**: un workflow en otra rama, o
 en un fork, no obtiene credenciales. Ese es el control real, no los permisos del rol.
