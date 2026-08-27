@@ -1,0 +1,125 @@
+version: 0.2
+
+# Etapa de inspeccion: seguridad, politica de organizacion y coste.
+#
+# ADVISORY POR DISENO: ningun hallazgo detiene la pipeline. Los reportes se
+# publican y quien decide es la aprobacion manual de la etapa siguiente.
+# Para hacerla bloqueante, quita los "|| true" y el `exit 0` final.
+
+env:
+  shell: bash
+
+phases:
+  install:
+    commands:
+      - |
+        set -uo pipefail
+        echo "== Instalando herramientas de inspeccion =="
+
+        # Versiones FIJADAS y tarballs de release directos, a proposito.
+        # Una pipeline que audita seguridad no deberia hacer `curl | sh` de un
+        # script alojado en una rama movil: es exactamente el riesgo de cadena
+        # de suministro que se supone que esta detectando.
+        CHECKOV_V=3.3.13
+        TFLINT_V=0.64.0
+        GITLEAKS_V=8.30.1
+        CONFTEST_V=0.69.0
+        INFRACOST_V=0.10.45
+
+        pip install --quiet --disable-pip-version-check "checkov==${CHECKOV_V}"
+
+        curl -sSL "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_V}/tflint_linux_amd64.zip" -o /tmp/tflint.zip
+        unzip -oq /tmp/tflint.zip -d /usr/local/bin
+
+        curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_V}/gitleaks_${GITLEAKS_V}_linux_x64.tar.gz" \
+          | tar -xz -C /usr/local/bin gitleaks
+
+        curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_V}/conftest_${CONFTEST_V}_Linux_x86_64.tar.gz" \
+          | tar -xz -C /usr/local/bin conftest
+
+        if [ -n "${INFRACOST_API_KEY:-}" ]; then
+          curl -sSL "https://github.com/infracost/infracost/releases/download/v${INFRACOST_V}/infracost-linux-amd64.tar.gz" \
+            | tar -xz -C /tmp
+          mv /tmp/infracost-linux-amd64 /usr/local/bin/infracost
+        fi
+
+        mkdir -p reports
+
+        # Ninguna herramienta que falte puede tumbar la fase: si alguna no se
+        # instalo, se reporta y el build phase la marca como hallazgo.
+        echo "== Versiones =="
+        for tool in checkov tflint gitleaks conftest infracost; do
+          if command -v "$tool" >/dev/null 2>&1; then
+            printf '  %-10s %s\n' "$tool" "$("$tool" --version 2>/dev/null | head -1 || echo instalado)"
+          else
+            printf '  %-10s NO INSTALADO\n' "$tool"
+          fi
+        done
+
+        exit 0
+
+  build:
+    commands:
+      - |
+        set -uo pipefail
+        : "${MODULE_PATH:?}" "${POLICY_PATH:?}"
+        FAILED=""
+
+        echo; echo "===================== CHECKOV ====================="
+        checkov --directory "${MODULE_PATH}" --framework terraform --compact \
+                --output cli --output junitxml --output-file-path console,reports/checkov.xml \
+          || FAILED="${FAILED} checkov"
+
+        echo; echo "===================== TFLINT ======================"
+        tflint --chdir="${MODULE_PATH}" --init >/dev/null 2>&1 || true
+        tflint --chdir="${MODULE_PATH}" --format=junit > reports/tflint.xml 2>/dev/null \
+          || FAILED="${FAILED} tflint"
+        tflint --chdir="${MODULE_PATH}" --format=compact || true
+
+        echo; echo "==================== GITLEAKS ====================="
+        # Escanea TODO el repo, no solo el modulo: un secreto commiteado en
+        # cualquier sitio es igual de grave.
+        gitleaks detect --source . --no-git --redact \
+                 --report-format sarif --report-path reports/gitleaks.sarif \
+          || FAILED="${FAILED} gitleaks"
+
+        echo; echo "============ CONFTEST (politicas de Aurex) ========"
+        # --combine: el input pasa a ser la lista de todos los .tf, para que las
+        # reglas de modulo vean el conjunto y no archivo a archivo.
+        conftest test --parser hcl2 --combine --all-namespaces \
+                 --policy "${POLICY_PATH}" "${MODULE_PATH}"/*.tf \
+          || FAILED="${FAILED} conftest"
+
+        echo; echo "==================== INFRACOST ===================="
+        if [ -n "${INFRACOST_API_KEY:-}" ]; then
+          infracost breakdown --path "${MODULE_PATH}" \
+                    --format json --out-file reports/infracost.json || FAILED="${FAILED} infracost"
+          infracost breakdown --path "${MODULE_PATH}" --format table || true
+          echo
+          echo "NOTA: esta estimacion usa los valores POR DEFECTO del modulo."
+          echo "      El coste del despliegue real se calcula en el runner, sobre el"
+          echo "      terraform plan con los parametros que elija el usuario final."
+        else
+          echo "Omitido: no hay INFRACOST_API_KEY configurada."
+        fi
+
+        echo; echo "===================== RESUMEN ====================="
+        if [ -n "${FAILED}" ]; then
+          echo "Con hallazgos:${FAILED}"
+        else
+          echo "Sin hallazgos."
+        fi
+        echo "Etapa advisory: la pipeline continua. Decide la aprobacion manual."
+        exit 0
+
+reports:
+  checkov:
+    files: [reports/checkov.xml]
+    file-format: JUNITXML
+  tflint:
+    files: [reports/tflint.xml]
+    file-format: JUNITXML
+
+artifacts:
+  files:
+    - reports/**/*

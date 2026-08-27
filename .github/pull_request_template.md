@@ -8,8 +8,8 @@
 
 ## Alcance
 
-- [ ] Modulos (`modules/`)
-- [ ] Hands-on (`hands-on/`)
+- [ ] Modulos de un hands-on (`hands-on/*/modules/`)
+- [ ] Productos del catalogo (`products/`)
 - [ ] Politicas de organizacion (`policies/`)
 - [ ] Pipeline / CI
 - [ ] Solo documentacion

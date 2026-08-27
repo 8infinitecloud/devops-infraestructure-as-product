@@ -30,17 +30,26 @@ que consume un equipo no depende de cómo se ejecuta por debajo.
 Módulos reutilizables por un lado, entornos que los componen por otro.
 
 ```
-modules/                            LA PLATAFORMA
-  terraform-os-engine/              motor Hands-on 1: SQS, Lambdas, Step Functions, CodeBuild
-  hcp-terraform-engine/             motor Hands-on 2: envuelve el módulo de HashiCorp
-  catalog-bootstrap-terraform-os/   Portfolio + Launch Role
-  catalog-bootstrap-hcp-terraform/  Launch Role + acceso (el Portfolio lo crea el motor)
-  catalog-shared/                   bucket de artefactos + conexión — UNO por catálogo
-  catalog-pipeline/                 CodePipeline — UNA POR PRODUCTO
+hands-on/                           CADA DEMO, COMPLETA Y AUTOSUFICIENTE
+  01-terraform-os/                  motor Terraform OS — apply en CodeBuild
+    main.tf                         compone los cuatro módulos de abajo
+    modules/
+      engine/                       SQS, Lambdas, Step Functions, CodeBuild
+      catalog-bootstrap/            Portfolio + Launch Role
+      catalog-shared/               bucket de artefactos + conexión — UNO por catálogo
+      catalog-pipeline/             CodePipeline — UNA POR PRODUCTO
+  02-hcp-terraform/                 motor HCP Terraform — apply en un workspace
+    main.tf
+    modules/
+      engine/                       envuelve el módulo de HashiCorp
+      catalog-bootstrap/            Launch Role + acceso (el Portfolio lo crea el motor)
+      catalog-shared/               igual que el del Hands-on 1
+      catalog-pipeline/             igual que el del Hands-on 1, salvo product_type
 
-products/                           LO QUE LA PLATAFORMA SIRVE
+products/                           LO ÚNICO QUE COMPARTEN — y es el punto del taller
   standard-environment/             red + almacenamiento + rol de acceso
 
+policies/                           las políticas que evalúan las dos pipelines
 bootstrap-oidc/                     OPCIONAL — rol para desplegar desde Actions sin claves
 
 hands-on/
@@ -134,7 +143,7 @@ Las credenciales **nunca** van en un `.tfvars`, ni siquiera en uno ignorado:
 ### Hands-on 1
 
 ```bash
-cd modules/terraform-os-engine/lambda-functions && make bin   # ← imprescindible
+cd hands-on/01-terraform-os/modules/engine/lambda-functions && make bin   # ← imprescindible
 cd ../../../hands-on/01-terraform-os && terraform init && terraform apply
 ```
 
@@ -147,7 +156,7 @@ plan. Si se olvida, el `apply` falla con un mensaje explícito, no con un zip va
 ### Hands-on 2
 
 ```bash
-cd modules/hcp-terraform-engine/engine/lambda-functions && make bin
+cd hands-on/02-hcp-terraform/modules/engine/engine/lambda-functions && make bin
 cd ../../../../hands-on/02-hcp-terraform && terraform init && terraform apply
 ```
 
@@ -319,7 +328,7 @@ problema durante las pruebas.
 Y por eso el launch constraint debe usar **`LocalRoleName`**, no `RoleArn`: así resuelve
 al rol homónimo de cada cuenta en vez de apuntar al del hub.
 
-> ⚠️ **`modules/catalog-pipeline/buildspec/publish.yml` publica hoy `{"RoleArn": ...}`.**
+> ⚠️ **`hands-on/01-terraform-os/modules/catalog-pipeline/buildspec/publish.yml` publica hoy `{"RoleArn": ...}`.**
 > Vale para monocuenta; para hub-and-spoke hay que cambiarlo a `{"LocalRoleName": ...}`.
 
 **3. Los nombres de Launch Role deben empezar por `SCLaunch`.**
@@ -369,7 +378,7 @@ spoke.**
 ## Añadir un producto al catálogo
 
 El catálogo son **datos**. Añadir un producto es añadir una entrada al mapa `productos`
-de `hands-on/01-terraform-os/main.tf` y crear su carpeta bajo `modules/`:
+de `hands-on/01-terraform-os/main.tf` y crear su carpeta bajo `products/`:
 
 ```hcl
 locals {
@@ -382,7 +391,7 @@ locals {
 
     data-lake = {                                    # ← el producto nuevo
       nombre      = "Data Lake"
-      ruta        = "modules/data-lake"
+      ruta        = "products/data-lake"
       descripcion = "Bucket con catálogo Glue y permisos de lectura."
     }
   }
@@ -407,7 +416,7 @@ falla al aprovisionar**, cuando el usuario final ya le dio a "Launch".
 
 Si el producto nuevo toca servicios distintos, hay que ampliar
 `data.aws_iam_policy_document.launch_role_permissions` en
-`modules/catalog-bootstrap-terraform-os/main.tf`.
+`hands-on/01-terraform-os/modules/catalog-bootstrap/main.tf`.
 
 ### ¿Y productos en OTROS repositorios?
 
@@ -457,7 +466,7 @@ Source → BuildValidate → Inspect → Approve → Publish
 **Es advisory por diseño: ningún hallazgo detiene la pipeline.** Los reportes se publican y
 quien decide es la aprobación manual de la etapa `Approve`. Los chequeos informan, la
 persona decide. Para hacerla bloqueante, quita los `|| true` y el `exit 0` de
-`modules/catalog-pipeline/buildspec/inspect.yml`.
+`hands-on/01-terraform-os/modules/catalog-pipeline/buildspec/inspect.yml`.
 
 ### Puerta de coste en el aprovisionamiento
 
@@ -508,7 +517,7 @@ alternativa —bloquear cuando no se puede estimar— convertiría cualquier ca�
 en una caída del catálogo entero. El coste de esta decisión es que la puerta se puede eludir
 rompiendo la herramienta, y por eso el aviso es ruidoso y queda en el log del build. Si
 alguna vez necesitas fail-closed, el sitio es la rama `elif [ "${LIMIT}" != "0" ]` de
-`modules/terraform-os-engine/buildspec/terraform-runner.yml`.
+`hands-on/01-terraform-os/modules/engine/buildspec/terraform-runner.yml`.
 
 ### Versiones fijadas a propósito
 
@@ -546,9 +555,9 @@ vendorizado y **conservan la suya**:
 
 | Directorio | Origen | Licencia |
 |---|---|---|
-| `modules/terraform-os-engine/` | Terraform Reference Engine, de AWS | Apache 2.0 |
-| `modules/hcp-terraform-engine/` | AWS Service Catalog Engine for TFC, de HashiCorp/IBM | **MPL 2.0** |
+| `hands-on/01-terraform-os/modules/engine/` | Terraform Reference Engine, de AWS | Apache 2.0 |
+| `hands-on/02-hcp-terraform/modules/engine/` | AWS Service Catalog Engine for TFC, de HashiCorp/IBM | **MPL 2.0** |
 
 La MPL 2.0 es copyleft **por fichero**: lo que modifiques dentro de
-`modules/hcp-terraform-engine/` sigue siendo MPL 2.0 aunque el resto del repo sea Apache.
+`hands-on/02-hcp-terraform/modules/engine/` sigue siendo MPL 2.0 aunque el resto del repo sea Apache.
 El detalle completo, en [NOTICE](NOTICE).

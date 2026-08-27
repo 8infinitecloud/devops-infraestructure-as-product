@@ -47,7 +47,7 @@ locals {
 }
 
 module "engine" {
-  source = "../../modules/terraform-os-engine"
+  source = "./modules/engine"
 
   terraform_cli_version = var.terraform_cli_version
 
@@ -58,7 +58,7 @@ module "engine" {
 }
 
 module "catalog_bootstrap" {
-  source = "../../modules/catalog-bootstrap-terraform-os"
+  source = "./modules/catalog-bootstrap"
 
   portfolio_name       = "Aurex Standard Environments"
   launch_role_name     = "AurexServiceCatalogLaunchRole-${data.aws_region.current.name}"
@@ -78,7 +78,7 @@ module "catalog_bootstrap" {
 # ---------------------------------------------------------------------------
 
 module "catalog_shared" {
-  source = "../../modules/catalog-shared"
+  source = "./modules/catalog-shared"
 
   artifact_bucket_name    = local.artifact_bucket
   existing_connection_arn = var.existing_connection_arn
@@ -90,7 +90,7 @@ module "catalog_shared" {
 # ---------------------------------------------------------------------------
 
 module "catalog_pipeline" {
-  source   = "../../modules/catalog-pipeline"
+  source   = "./modules/catalog-pipeline"
   for_each = local.productos
 
   # EXTERNAL enruta a las colas ServiceCatalogExternal* de este motor.

@@ -29,7 +29,7 @@ locals {
 }
 
 module "engine" {
-  source = "../../modules/hcp-terraform-engine"
+  source = "./modules/engine"
 
   tfc_organization  = var.tfc_organization
   tfc_team          = var.tfc_team
@@ -45,7 +45,7 @@ module "engine" {
 }
 
 module "catalog_bootstrap" {
-  source = "../../modules/catalog-bootstrap-hcp-terraform"
+  source = "./modules/catalog-bootstrap"
 
   # El motor ya crea el Portfolio: aqui se reutiliza, no se crea otro.
   portfolio_id         = module.engine.example_portfolio_id
@@ -61,7 +61,7 @@ module "catalog_bootstrap" {
 }
 
 module "catalog_shared" {
-  source = "../../modules/catalog-shared"
+  source = "./modules/catalog-shared"
 
   artifact_bucket_name    = local.artifact_bucket
   existing_connection_arn = var.existing_connection_arn
@@ -69,7 +69,7 @@ module "catalog_shared" {
 }
 
 module "catalog_pipeline" {
-  source   = "../../modules/catalog-pipeline"
+  source   = "./modules/catalog-pipeline"
   for_each = local.productos
 
   # TERRAFORM_CLOUD enruta a las colas ServiceCatalogTerraformCloud* de este motor.

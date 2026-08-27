@@ -41,7 +41,7 @@ hay `.github/dependabot.yml` en el repo — su presencia es lo que activa los
 bumps rutinarios.
 
 Es una decision, no un olvido. Casi todas las dependencias del repo estan en
-`modules/terraform-os-engine/` y `modules/hcp-terraform-engine/`, que son codigo
+`hands-on/01-terraform-os/modules/engine/` y `hands-on/02-hcp-terraform/modules/engine/`, que son codigo
 vendorizado: actualizar el SDK de AWS del motor de HashiCorp por nuestra cuenta
 va en contra de lo que pide CONTRIBUTING.md, porque esa decision se toma aguas
 arriba. Un PR automatico al mes proponiendo justo eso es ruido que acaba
@@ -52,7 +52,7 @@ las actualizaciones automaticas de seguridad.
 
 ## Codigo de terceros
 
-Los directorios `modules/terraform-os-engine/` y `modules/hcp-terraform-engine/`
+Los directorios `hands-on/01-terraform-os/modules/engine/` y `hands-on/02-hcp-terraform/modules/engine/`
 derivan de los motores de referencia de AWS y de HashiCorp (ver NOTICE). Si el
 fallo es del motor original y no de la adaptacion, reportalo tambien aguas
 arriba: es donde se arregla para todo el mundo.

@@ -1,6 +1,10 @@
 # Productos del catálogo
 
-Aquí vive **lo que la plataforma sirve**. En `modules/` vive la plataforma que lo sirve.
+Aquí vive **lo que la plataforma sirve**. Cada hands-on lleva su propia plataforma dentro,
+en `hands-on/NN-*/modules/`.
+
+Esta carpeta es **lo único que los dos hands-on comparten**, y no es casualidad: es
+exactamente lo que el taller demuestra.
 
 Esa separación es el asunto del taller. Un producto no sabe qué motor lo ejecuta por
 debajo: `standard-environment` es exactamente el mismo módulo en el Hands-on 1 (Terraform
@@ -42,4 +46,4 @@ acotado a lo que necesita `standard-environment`: VPC, S3 y roles IAM que casen
 Un producto que cree RDS o EKS **pasa validate, pasa publish, y falla al aprovisionar** —
 con el usuario final ya delante del asistente. Si el producto nuevo toca otros servicios,
 amplía `data.aws_iam_policy_document.launch_role_permissions` en
-`modules/catalog-bootstrap-terraform-os/main.tf`.
+`hands-on/01-terraform-os/modules/catalog-bootstrap/main.tf`.

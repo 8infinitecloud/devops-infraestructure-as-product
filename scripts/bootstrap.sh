@@ -48,10 +48,10 @@ fatal() { printf '\n%sERROR:%s %s\n\n' "${ROJO}" "${FIN}" "$*" >&2; exit 1; }
 
 case "${HANDS_ON}" in
   01) DIR="hands-on/01-terraform-os"
-      BUILD_DIR="modules/terraform-os-engine/lambda-functions"
+      BUILD_DIR="hands-on/01-terraform-os/modules/engine/lambda-functions"
       NOMBRE="Hands-on 1 — motor Terraform OS" ;;
   02) DIR="hands-on/02-hcp-terraform"
-      BUILD_DIR="modules/hcp-terraform-engine/engine/lambda-functions"
+      BUILD_DIR="hands-on/02-hcp-terraform/modules/engine/engine/lambda-functions"
       NOMBRE="Hands-on 2 — motor HCP Terraform" ;;
   *)  cat >&2 <<EOF
 Uso: $0 <01|02> [apply|plan|destroy]
