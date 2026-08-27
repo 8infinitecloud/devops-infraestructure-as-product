@@ -1,0 +1,41 @@
+# Copia este fichero a `terraform.tfvars` y rellena los valores de TU cuenta.
+#
+#     cp terraform.tfvars.example terraform.tfvars
+#
+# `terraform.tfvars` esta en .gitignore a proposito: identifica tu cuenta, tu
+# usuario y tu organizacion de HCP Terraform.
+#
+# Alternativa sin fichero, util en CI:
+#
+#     export TF_VAR_tfc_organization="mi-org"
+#     export TF_VAR_github_repository_id="mi-org/mi-repo"
+#
+# El TOKEN de HCP Terraform NO se pone aqui ni en ningun fichero: va en la
+# variable de entorno TFE_TOKEN, o en ~/.terraform.d/credentials.tfrc.json
+# con permisos 0600.
+#
+#     export TFE_TOKEN="..."
+
+# --- OBLIGATORIAS -----------------------------------------------------------
+
+# Organizacion de HCP Terraform.
+tfc_organization = "mi-org"
+
+# Repositorio que alimenta la pipeline, en formato owner/repo.
+github_repository_id = "mi-org/mi-repo"
+
+# --- Opcionales (aqui van los valores por defecto) --------------------------
+
+region        = "us-east-1"
+github_branch = "main"
+# tfc_team     = "aurex-service-catalog"
+# tfc_hostname = "app.terraform.io"
+
+# Conexion de CodeConnections YA autorizada. Vacio => Terraform crea una nueva
+# que hay que autorizar a mano una unica vez en la consola de AWS.
+# existing_connection_arn = "arn:aws:codeconnections:us-east-1:123456789012:connection/00000000-0000-0000-0000-000000000000"
+
+# grant_access_to_principal_arns = ["arn:aws:iam::123456789012:user/mi-usuario"]
+# terraform_version              = "1.5.7"
+# require_manual_approval        = true
+# infracost_api_key_secret_arn   = "arn:aws:secretsmanager:us-east-1:123456789012:secret:infracost-xxxxxx"

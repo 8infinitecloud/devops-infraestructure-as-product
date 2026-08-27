@@ -1,8 +1,14 @@
-# --- Secretos: nunca versionar -------------------------------------------
+# --- Secretos y datos de tu cuenta: nunca versionar ----------------------
 *.tfvars.secret
 .env
 *.pem
 credentials.tfrc.json
+
+# terraform.tfvars identifica TU cuenta, TU usuario y TU repositorio. Se
+# versiona `terraform.tfvars.example` con valores de relleno; el real, no.
+terraform.tfvars
+*.auto.tfvars
+!terraform.tfvars.example
 
 # --- Terraform ------------------------------------------------------------
 .terraform/

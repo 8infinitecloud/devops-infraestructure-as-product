@@ -98,7 +98,33 @@ mensajes, `DescribeProvisioningParameters` y `Notify*EngineWorkflowResult` intac
 ## Cómo desplegar
 
 Requisitos: `terraform >= 1.5`, `go`, `python3`, `aws-cli`, credenciales de AWS y
-—solo paral Hands-on 2— `TFE_TOKEN`.
+—solo para el Hands-on 2— `TFE_TOKEN`.
+
+### Configuración
+
+Cada hands-on necesita su `terraform.tfvars`, que **no está versionado**: identifica tu
+cuenta, tu usuario y tu repositorio. Se parte del ejemplo:
+
+```bash
+cd hands-on/01-terraform-os
+cp terraform.tfvars.example terraform.tfvars   # y rellena tus valores
+```
+
+Sin fichero, por entorno —que es lo que quieres en CI—, cualquier variable acepta el
+prefijo `TF_VAR_`:
+
+```bash
+export TF_VAR_github_repository_id="mi-org/mi-repo"
+export TF_VAR_grant_access_to_principal_arns='["arn:aws:iam::123456789012:user/yo"]'
+```
+
+Las credenciales **nunca** van en un `.tfvars`, ni siquiera en uno ignorado:
+
+| Credencial | Dónde va |
+|---|---|
+| AWS | El cadena de proveedores estándar: `aws configure`, SSO o rol de instancia |
+| HCP Terraform | `TFE_TOKEN` en el entorno, o `~/.terraform.d/credentials.tfrc.json` con `0600` |
+| Infracost | Secrets Manager, por ARN en `infracost_api_key_secret_arn`. CodeBuild la resuelve en ejecución: no pasa por el state ni por el buildspec |
 
 ### Hands-on 1
 

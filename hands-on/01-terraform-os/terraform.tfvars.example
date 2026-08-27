@@ -1,0 +1,39 @@
+# Copia este fichero a `terraform.tfvars` y rellena los valores de TU cuenta.
+#
+#     cp terraform.tfvars.example terraform.tfvars
+#
+# `terraform.tfvars` esta en .gitignore a proposito: identifica tu cuenta, tu
+# usuario y tu repositorio, y eso no tiene por que acabar en un repo publico.
+#
+# Alternativa sin fichero, util en CI: cualquier variable se puede pasar por
+# entorno con el prefijo TF_VAR_.
+#
+#     export TF_VAR_github_repository_id="mi-org/mi-repo"
+#     export TF_VAR_grant_access_to_principal_arns='["arn:aws:iam::123456789012:user/yo"]'
+#
+# Las listas y los mapas van como JSON entre comillas simples, como arriba.
+
+# --- OBLIGATORIA ------------------------------------------------------------
+
+# Repositorio que alimenta la pipeline, en formato owner/repo.
+github_repository_id = "mi-org/mi-repo"
+
+# --- Opcionales (aqui van los valores por defecto) --------------------------
+
+region        = "us-east-1"
+github_branch = "main"
+
+# Conexion de CodeConnections YA autorizada. Si lo dejas vacio, Terraform crea
+# una nueva que hay que autorizar a mano una unica vez en la consola de AWS.
+# existing_connection_arn = "arn:aws:codeconnections:us-east-1:123456789012:connection/00000000-0000-0000-0000-000000000000"
+
+# Quien puede lanzar productos del Portfolio. Tu propio usuario o rol.
+# grant_access_to_principal_arns = ["arn:aws:iam::123456789012:user/mi-usuario"]
+
+# terraform_cli_version   = "1.5.7"
+# require_manual_approval = true
+
+# API key de Infracost, por referencia a Secrets Manager: la clave NO viaja en
+# el state ni en el buildspec, la resuelve CodeBuild en tiempo de ejecucion.
+# infracost_api_key_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:infracost-xxxxxx"
+# infracost_max_monthly_usd    = 50

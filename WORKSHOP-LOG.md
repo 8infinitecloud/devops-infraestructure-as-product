@@ -1,6 +1,11 @@
 # Infrastructure as a Product — Log de trabajo
 
-Registro cronológico de decisiones, comandos y hallazgos. Cuenta AWS `058264353988`,
+Registro cronológico de decisiones, comandos y hallazgos.
+
+> Los identificadores de la cuenta usada en el taller están sustituidos por
+> marcadores (`<AWS_ACCOUNT_ID>`, `<USUARIO>`, `<CONNECTION_ID>`). Ninguna
+> credencial llegó nunca a este repositorio; lo que se sustituye son datos que
+> identifican una cuenta concreta y no aportan nada a lo que el registro enseña. Cuenta AWS `<AWS_ACCOUNT_ID>`,
 región `us-east-1`, org de HCP Terraform `8infinitecloud`.
 
 ---
@@ -9,9 +14,9 @@ región `us-east-1`, org de HCP Terraform `8infinitecloud`.
 
 | Plataforma | Resultado |
 |---|---|
-| AWS | `arn:aws:iam::058264353988:user/hmunoz`, **AdministratorAccess**. 15 APIs probadas una a una (CFN, IAM, S3, Lambda, SFN, SQS, CodeBuild, CodePipeline, CodeConnections, Service Catalog, EC2, ECR, SSM, Logs): todas OK |
+| AWS | `arn:aws:iam::<AWS_ACCOUNT_ID>:user/<USUARIO>`, **AdministratorAccess**. 15 APIs probadas una a una (CFN, IAM, S3, Lambda, SFN, SQS, CodeBuild, CodePipeline, CodeConnections, Service Catalog, EC2, ECR, SSM, Logs): todas OK |
 | GitHub | `8infinitecloud`, scopes `gist, project, read:org, repo, workflow` |
-| HCP Terraform | Token de team `owners` (`api-team_2670286`), org `8infinitecloud`, `teams=true` (plan Essentials) |
+| HCP Terraform | Token de team `owners` (`api-team_<ID>`), org `8infinitecloud`, `teams=true` (plan Essentials) |
 
 **No me fié de los flags de permisos de HCP Terraform.** Verificación activa:
 
@@ -42,7 +47,7 @@ modificados (`template.yaml`, `bin/bash/deploy-tre.sh`, migración py3.9 → py3
 
 ### 1.2 Ya existía una conexión de CodeConnections autorizada
 ```
-8infinitecloud  AVAILABLE  arn:aws:codestar-connections:us-east-1:058264353988:connection/4f7c1814-1665-42ea-9b37-c188cb60fcfd
+8infinitecloud  AVAILABLE  arn:aws:codestar-connections:us-east-1:<AWS_ACCOUNT_ID>:connection/<CONNECTION_ID>
 ```
 **Esto elimina el paso manual de autorización en consola** previsto en la FASE 2. Las plantillas
 la aceptan como parámetro `ConnectionArn`; si se deja vacío crean una nueva (que sí exigiría
@@ -51,7 +56,7 @@ autorización manual).
 ### 1.3 Restos de un intento anterior
 - Service Catalog: portfolio `port-s2jeupfnqwaaq` "TFC Example Portfolio" ya existía.
 - `aws-service-catalog-engine-for-tfc/terraform.tfstate`: serial 254, con ese portfolio dentro.
-- HCP Terraform: workspace huérfano `058264353988-pp-xw6iwhnzk4ox2` (0 recursos).
+- HCP Terraform: workspace huérfano `<AWS_ACCOUNT_ID>-pp-xw6iwhnzk4ox2` (0 recursos).
 - El OIDC provider de `app.terraform.io` **no existe** — el `EntityAlreadyExists` que anticipaba
   el usuario no se dará en este arranque. La lógica de import se deja igualmente preparada.
 
@@ -254,7 +259,7 @@ de import queda documentada por si reaparece.
 | Pipeline: Source / Build-Validate / Publish | **Succeeded las 3** — producto `prod-4xc5xszrhiriq`, versión `v20260825-130354-aa19bdb` |
 | `DescribeProvisioningParameters` | **OK** — el parser del motor de HashiCorp leyó **el mismo módulo** del Hands-on 1 y extrajo las mismas 5 variables |
 | Aprovisionamiento | **AVAILABLE** |
-| Workspace en HCP Terraform | `058264353988-pp-znx2rcggrcgws`, Terraform 1.5.7, **16 recursos** |
+| Workspace en HCP Terraform | `<AWS_ACCOUNT_ID>-pp-znx2rcggrcgws`, Terraform 1.5.7, **16 recursos** |
 | Run en HCP Terraform | `run-sLdjvdgKerFciP8Z` → **applied** |
 | Recursos reales en AWS | VPC `vpc-03abfb14b2d19b918` (10.50.0.0/16), 2 subredes en 2 AZ, bucket `aurexdemo2-storage-…`, rol `aurexdemo2-environment-access` |
 | Record outputs | `vpc_id`, `subnet_ids`, `storage_bucket_name`, `access_role_arn` |
@@ -315,9 +320,9 @@ inverso.
 
 - Portfolio `port-s2jeupfnqwaaq` "TFC Example Portfolio" (23-ago). Hubo que **desasociar el
   principal antes** de poder borrarlo.
-- Workspace huérfano `058264353988-pp-xw6iwhnzk4ox2` en HCP Terraform (24-ago).
+- Workspace huérfano `<AWS_ACCOUNT_ID>-pp-xw6iwhnzk4ox2` en HCP Terraform (24-ago).
 - Producto aprovisionado `test-tfc-bucket-1787546133`.
-- Resource group `SC-058264353988-pp-xw6iwhnzk4ox2`.
+- Resource group `SC-<AWS_ACCOUNT_ID>-pp-xw6iwhnzk4ox2`.
 - Secreto `terraform-cloud-credentials-for-service-catalog-engine` en ventana de recuperación.
 - Stack y bucket `aws-sam-cli-managed-default`, creados por el `sam deploy` previo a la
   migración. El borrado del stack falló primero porque el bucket tenía **10 versiones de
@@ -434,7 +439,7 @@ del hub mientras el provider `aws` asume el Launch Role del spoke.
 | Pipeline Source / Build-Validate / Publish | Succeeded las 3. Producto `prod-abqplym55kees` |
 | `DescribeProvisioningParameters` | Las mismas 5 variables — el parser de HashiCorp sobre **el mismo módulo** del Hands-on 1 |
 | Provision | **AVAILABLE** |
-| Workspace en HCP Terraform | `058264353988-pp-u57rlssujjpz2`, 16 recursos, Terraform 1.5.7 |
+| Workspace en HCP Terraform | `<AWS_ACCOUNT_ID>-pp-u57rlssujjpz2`, 16 recursos, Terraform 1.5.7 |
 | Run | `run-S2w5datA3yo9UF4j` → **applied** |
 | Recursos en AWS | VPC `10.70.0.0/16`, 2 subredes, bucket, rol `aurexmod2-environment-access` |
 | Terminate + `terraform destroy` | **100 recursos destruidos**, state a 0 |
@@ -468,7 +473,7 @@ la premisa hub-and-spoke entera.
 *"Step 8: Share portfolio with end user (spoke account)"*, usando organization sharing desde
 la cuenta hub. No es un caso no soportado: es el flujo documentado.
 
-**Prueba empírica en la cuenta `058264353988`:**
+**Prueba empírica en la cuenta `<AWS_ACCOUNT_ID>`:**
 
 ```bash
 aws servicecatalog enable-aws-organizations-access
