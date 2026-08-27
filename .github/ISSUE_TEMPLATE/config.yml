@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Dudas sobre el taller
+    url: https://github.com/8infinitecloud/devops-infraestructure-as-product/discussions
+    about: Preguntas de uso, dudas conceptuales o de seguimiento del taller.
+  - name: Vulnerabilidad de seguridad
+    url: https://github.com/8infinitecloud/devops-infraestructure-as-product/security/advisories/new
+    about: NO abras un issue publico. Reporta en privado, ver SECURITY.md.

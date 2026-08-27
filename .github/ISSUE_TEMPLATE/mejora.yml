@@ -1,0 +1,34 @@
+name: Mejora
+description: Una propuesta de cambio o una idea para el taller.
+labels: [mejora]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Que problema resuelve
+      description: Empieza por el problema, no por la solucion.
+    validations:
+      required: true
+
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Propuesta
+      description: Que habria que tocar y por que crees que es el sitio correcto.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Que se descarto
+      description: Otras opciones que consideraste y por que no valen.
+
+  - type: checkboxes
+    id: impacto
+    attributes:
+      label: Impacto
+      options:
+        - label: Cambia la interfaz de un modulo ya publicado en el catalogo
+        - label: Cambia permisos IAM
+        - label: Anade una dependencia o herramienta nueva a la pipeline

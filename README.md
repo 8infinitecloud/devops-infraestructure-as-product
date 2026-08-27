@@ -321,3 +321,40 @@ alguna vez necesitas fail-closed, el sitio es la rama `elif [ "${LIMIT}" != "0" 
 Las herramientas se instalan desde tarballs de release **con versión fijada**, no con
 `curl | sh` de un script en `master`. Una pipeline que audita seguridad no debería
 introducir el mismo riesgo de cadena de suministro que se supone que detecta.
+
+## Repositorio: CI, contribución y licencia
+
+Las mismas puertas de la pipeline corren también en GitHub Actions
+(`.github/workflows/ci.yml`), con la misma división de responsabilidades:
+
+| Trabajo | Qué hace | ¿Bloquea? |
+|---|---|---|
+| `validate` | `terraform fmt -check` sobre todo el repo y `terraform validate` en los 6 módulos y los 2 hands-on | Sí |
+| `test-go` | `go vet` y `go test -race` en los dos módulos Go (versiones distintas, cada una sale de su `go.mod`) | Sí |
+| `test-python` | `pytest` sobre las Lambdas del motor Terraform OS | Sí |
+| `inspect` | Checkov, TFLint, Conftest y Gitleaks | **No** |
+
+Que `inspect` no bloquee es la misma decisión, y por el mismo motivo, que en
+`buildspec/inspect.yml`: sobre un hallazgo decide una persona, no la herramienta. Si el CI
+de GitHub bloqueara y la pipeline no, el mismo commit tendría dos veredictos distintos.
+
+Terraform está fijado a la **misma versión** que `terraform_cli_version` de la pipeline
+(1.5.7). Si divergen, `fmt -check` puede discrepar entre GitHub y CodeBuild sobre el mismo
+código.
+
+- **Contribuir:** [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Vulnerabilidades:** [SECURITY.md](SECURITY.md) — reporte privado, nunca un issue público.
+
+### Licencia
+
+Código propio bajo **Apache 2.0** ([LICENSE](LICENSE)). Los dos motores son código
+vendorizado y **conservan la suya**:
+
+| Directorio | Origen | Licencia |
+|---|---|---|
+| `modules/terraform-os-engine/` | Terraform Reference Engine, de AWS | Apache 2.0 |
+| `modules/hcp-terraform-engine/` | AWS Service Catalog Engine for TFC, de HashiCorp/IBM | **MPL 2.0** |
+
+La MPL 2.0 es copyleft **por fichero**: lo que modifiques dentro de
+`modules/hcp-terraform-engine/` sigue siendo MPL 2.0 aunque el resto del repo sea Apache.
+El detalle completo, en [NOTICE](NOTICE).

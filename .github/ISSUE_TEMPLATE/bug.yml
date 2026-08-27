@@ -1,0 +1,54 @@
+name: Fallo
+description: Algo no funciona como esta documentado.
+labels: [bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Donde ocurre
+      options:
+        - Hands-on 1 — motor Terraform OS
+        - Hands-on 2 — motor HCP Terraform
+        - Pipeline del catalogo (CodePipeline / CodeBuild)
+        - Politicas (Conftest / OPA)
+        - Modulo standard-environment
+        - Documentacion
+        - Otro / no lo tengo claro
+    validations:
+      required: true
+
+  - type: textarea
+    id: que-pasa
+    attributes:
+      label: Que pasa
+      description: Que observas y que esperabas observar.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducir
+    attributes:
+      label: Como reproducirlo
+      description: Los comandos exactos, desde que directorio.
+      placeholder: |
+        1. cd hands-on/01-terraform-os
+        2. terraform apply
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidencia
+    attributes:
+      label: Evidencia
+      description: >
+        Salida del error, ID de ejecucion de la Step Function, nombre del build
+        de CodeBuild, ID de producto aprovisionado. **Revisa que no vaya ningun
+        token, clave ni credencial** antes de pegarlo.
+      render: shell
+
+  - type: input
+    id: versiones
+    attributes:
+      label: Versiones
+      placeholder: "terraform 1.5.7, provider aws 5.100.0, region us-east-1"

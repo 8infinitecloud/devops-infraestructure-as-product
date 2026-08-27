@@ -39,7 +39,10 @@ lambda-functions/build/
 .build/
 **/.build/
 *.tar.gz
-!demo2-hcp-terraform-engine/engine/example-product/product.tar.gz
+# Excepciones: artefactos que SI se versionan porque son entrada de tests o del
+# ejemplo del motor, no salida de un build.
+!modules/hcp-terraform-engine/example-product/product.tar.gz
+!modules/terraform-os-engine/sample-provisioning-artifacts/*.tar.gz
 dist/*.whl
 
 # --- SO / editor ----------------------------------------------------------
@@ -50,7 +53,6 @@ dist/*.whl
 # Planes guardados y binarios compilados sueltos
 tfplan
 *.tfplan
-demo2-hcp-terraform-engine/engine/engine/lambda-functions/send-apply/send-apply
 
 # Lock transitorio de terraform
 *.tfstate.lock.info

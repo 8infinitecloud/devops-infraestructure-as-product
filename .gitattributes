@@ -1,0 +1,34 @@
+# Normaliza finales de linea al entrar al repo; en el arbol de trabajo se
+# respeta lo nativo de cada SO.
+* text=auto
+
+# Scripts que se ejecutan dentro de contenedores Linux (CodeBuild, Lambda):
+# un CRLF los rompe con un error que no dice nada util.
+*.sh          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+Makefile      text eol=lf
+
+*.tf          text eol=lf
+*.tfvars      text eol=lf
+*.hcl         text eol=lf
+*.rego        text eol=lf
+*.go          text eol=lf
+*.py          text eol=lf
+
+# Binarios: sin conversion y sin diff textual.
+*.zip         binary
+*.tar.gz      binary
+*.png         binary
+*.jpg         binary
+
+# go.sum genera un diff enorme e ilegible en cada bump de dependencia.
+go.sum        -diff
+
+# Que GitHub no cuente el codigo vendorizado como codigo del proyecto en las
+# estadisticas de lenguajes, ni lo saque en las busquedas por defecto.
+modules/hcp-terraform-engine/engine/lambda-functions/** linguist-vendored
+modules/terraform-os-engine/lambda-functions/**         linguist-vendored
+
+# Los .tf SI son el codigo del proyecto: forzamos que cuenten.
+*.tf          linguist-detectable

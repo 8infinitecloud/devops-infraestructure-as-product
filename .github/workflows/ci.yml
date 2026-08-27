@@ -1,0 +1,224 @@
+# Puertas de calidad en cada Pull Request y en cada push a main.
+#
+# Es deliberadamente el ESPEJO de lo que hace la pipeline de CodePipeline, con
+# la misma division de responsabilidades:
+#
+#   validate  -> BLOQUEANTE. Es la etapa BuildValidate del buildspec.
+#   test      -> BLOQUEANTE. Los tests unitarios de las Lambdas (Go y Python).
+#   inspect   -> ADVISORY.   Es la etapa Inspect: informa, no detiene.
+#
+# Que Inspect no bloquee no es un descuido: esta decidido en
+# `modules/catalog-pipeline/buildspec/inspect.yml` — quien decide sobre los
+# hallazgos es la aprobacion manual, no la herramienta. El CI de GitHub respeta
+# ese contrato para no dar dos veredictos distintos sobre el mismo codigo.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Un push nuevo sobre la misma rama cancela el run anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # La MISMA version que `terraform_cli_version` en
+  # `modules/catalog-pipeline/variables.tf`. Si divergen, `fmt -check` puede dar
+  # veredictos distintos aqui y en CodeBuild sobre el mismo commit.
+  TF_VERSION: "1.5.7"
+
+jobs:
+  # --------------------------------------------------------------------------
+  validate:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt -check (todo el repo)
+        run: terraform fmt -check -recursive -no-color
+
+      # Cada modulo y cada hands-on se inicializa sin backend y se valida por
+      # separado: un modulo puede estar roto sin que el hands-on que lo consume
+      # lo delate, y al reves.
+      - name: terraform validate
+        run: |
+          set -euo pipefail
+          FAILED=""
+          for dir in modules/* hands-on/*; do
+            [ -d "$dir" ] || continue
+            # `hcp-terraform-engine/engine` es un submodulo interno; se valida
+            # desde su raiz, que es la que declara los providers.
+            ls "$dir"/*.tf >/dev/null 2>&1 || { echo "-- $dir: sin .tf en la raiz, se omite"; continue; }
+            echo "== $dir =="
+            terraform -chdir="$dir" init -backend=false -input=false -no-color
+            terraform -chdir="$dir" validate -no-color || FAILED="${FAILED} $dir"
+          done
+          if [ -n "${FAILED}" ]; then
+            echo "::error::terraform validate fallo en:${FAILED}"
+            exit 1
+          fi
+
+  # --------------------------------------------------------------------------
+  test-go:
+    name: Tests Go (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: motor HCP Terraform
+            dir: modules/hcp-terraform-engine/engine/lambda-functions
+          - name: parser Terraform OS
+            dir: modules/terraform-os-engine/lambda-functions/terraform_open_source_parameter_parser
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # La version sale del go.mod de cada modulo: son distintas y no deben
+          # fijarse aqui.
+          go-version-file: ${{ matrix.dir }}/go.mod
+          cache-dependency-path: ${{ matrix.dir }}/go.sum
+
+      - name: go vet
+        working-directory: ${{ matrix.dir }}
+        run: go vet ./...
+
+      - name: go test
+        working-directory: ${{ matrix.dir }}
+        run: go test -race ./...
+
+  # --------------------------------------------------------------------------
+  test-python:
+    name: Tests Python (Lambdas Terraform OS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: modules/terraform-os-engine/lambda-functions
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: modules/terraform-os-engine/lambda-functions/**/requirements.txt
+
+      - name: Instalar dependencias
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet pytest
+          # Un `[ -f ] && ...` como ultima orden del bucle devolveria != 0 y con
+          # `set -e` tumbaria el paso cuando el glob no casa. Con `if` no pasa.
+          for req in */requirements.txt; do
+            if [ -f "$req" ]; then
+              python -m pip install --quiet -r "$req"
+            fi
+          done
+
+      - name: pytest
+        run: python -m pytest -q
+
+  # --------------------------------------------------------------------------
+  # ADVISORY: reporta hallazgos, nunca tumba el CI. Ver la nota de arriba.
+  #
+  # Las herramientas se instalan con las MISMAS versiones fijadas que
+  # `modules/catalog-pipeline/buildspec/inspect.yml`, y desde tarballs de release,
+  # no con `curl | sh` de una rama movil. Dos motivos: que el veredicto sea el
+  # mismo aqui y en CodeBuild, y no meter en un job que audita seguridad el
+  # riesgo de cadena de suministro que se supone que detecta.
+  inspect:
+    name: Inspect (seguridad, politica y secretos) — advisory
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      CHECKOV_V: "3.3.13"
+      TFLINT_V: "0.64.0"
+      GITLEAKS_V: "8.30.1"
+      CONFTEST_V: "0.69.0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Gitleaks escanea el historial, no solo el arbol de trabajo.
+          fetch-depth: 0
+
+      - name: Instalar herramientas
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          pip install --quiet --disable-pip-version-check "checkov==${CHECKOV_V}"
+          curl -sSL "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_V}/tflint_linux_amd64.zip" -o /tmp/tflint.zip
+          sudo unzip -oq /tmp/tflint.zip -d /usr/local/bin
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_V}/gitleaks_${GITLEAKS_V}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_V}/conftest_${CONFTEST_V}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin conftest
+
+      - name: Checkov
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          checkov --directory modules --framework terraform --compact \
+                  --output cli --output junitxml \
+                  --output-file-path console,reports/checkov.xml
+
+      - name: TFLint
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          for dir in modules/* hands-on/*; do
+            ls "$dir"/*.tf >/dev/null 2>&1 || continue
+            echo "== $dir =="
+            tflint --chdir="$dir" --init >/dev/null 2>&1 || true
+            tflint --chdir="$dir" --format=compact || true
+          done
+
+      - name: Conftest (politicas de Aurex)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          # --combine: el input es la lista de todos los .tf, para que las reglas
+          # de modulo vean el conjunto y no archivo a archivo.
+          conftest test --parser hcl2 --combine --all-namespaces \
+                   --policy policies modules/standard-environment/*.tf
+
+      - name: Gitleaks
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          gitleaks detect --source . --redact \
+                   --report-format sarif --report-path reports/gitleaks.sarif
+
+      - name: Publicar secretos detectados en la pestana Security
+        if: always() && hashFiles('reports/gitleaks.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/gitleaks.sarif
+          category: gitleaks
+
+      - name: Guardar reportes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inspect-reports
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 14
