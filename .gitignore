@@ -43,6 +43,9 @@ lambda-functions/build/
 # ejemplo del motor, no salida de un build.
 !modules/hcp-terraform-engine/example-product/product.tar.gz
 !modules/terraform-os-engine/sample-provisioning-artifacts/*.tar.gz
+# Fixtures de los tests Go. Sin ellos, `go test` pasa en local (donde el fichero
+# esta en disco pero ignorado) y falla en un checkout limpio. Son ~44 KB en total.
+!**/test-artifacts/*.tar.gz
 dist/*.whl
 
 # --- SO / editor ----------------------------------------------------------
