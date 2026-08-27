@@ -23,8 +23,11 @@ variable "product_type" {
 
 variable "name_prefix" {
   type        = string
-  description = "Prefijo de los recursos. Permite que los dos hands-on convivan en la misma cuenta."
-  default     = "aurex-catalog"
+  description = <<-EOT
+    Prefijo de los recursos. Tiene que ser DISTINTO en cada instancia del modulo:
+    con for_each, dos productos con el mismo prefijo chocan en los nombres de los
+    proyectos de CodeBuild, de los log groups y de la propia pipeline.
+  EOT
 }
 
 variable "portfolio_id" {
@@ -39,23 +42,12 @@ variable "launch_role_arn" {
 
 variable "artifact_bucket_name" {
   type        = string
-  description = "Bucket donde se publican los .tar.gz"
+  description = "Bucket donde se publican los .tar.gz. Lo crea `catalog-shared`, aqui solo se usa."
 }
 
-variable "existing_connection_arn" {
+variable "connection_arn" {
   type        = string
-  description = <<-EOT
-    ARN de una conexion de CodeConnections a GitHub YA AUTORIZADA.
-    Si se deja vacio, Terraform crea una nueva, que nace en estado PENDING y
-    hay que autorizar a mano una unica vez en la consola de AWS.
-  EOT
-  default     = ""
-}
-
-variable "connection_name" {
-  type        = string
-  description = "Nombre de la conexion a crear (solo si existing_connection_arn esta vacio)"
-  default     = "aurex-github"
+  description = "ARN de la conexion de CodeConnections. Lo expone `catalog-shared`."
 }
 
 variable "github_repository_id" {
@@ -72,13 +64,17 @@ variable "github_branch" {
 variable "module_source_path" {
   type        = string
   description = "Ruta dentro del repo donde viven los .tf del modulo a publicar"
-  default     = "hands-on/01-terraform-os/catalog-modules/standard-environment"
 }
 
 variable "product_name" {
   type        = string
-  description = "Nombre del producto en Service Catalog"
-  default     = "Standard Environment"
+  description = "Nombre del producto en Service Catalog. Es la clave con la que Publish lo busca."
+}
+
+variable "product_description" {
+  type        = string
+  description = "Descripcion del producto en el catalogo"
+  default     = "Publicado por CodePipeline desde el repositorio del catalogo."
 }
 
 variable "product_owner" {

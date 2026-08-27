@@ -256,6 +256,64 @@ las cuentas, y el backend S3 usa las credenciales del hub mientras el provider `
 el Launch Role del spoke: **el state se queda en el hub y los recursos aterrizan en el
 spoke.**
 
+## Añadir un producto al catálogo
+
+El catálogo son **datos**. Añadir un producto es añadir una entrada al mapa `productos`
+de `hands-on/01-terraform-os/main.tf` y crear su carpeta bajo `modules/`:
+
+```hcl
+locals {
+  productos = {
+    standard-environment = {
+      nombre      = "Standard Environment"
+      ruta        = "modules/standard-environment"
+      descripcion = "Red, almacenamiento y rol de acceso estándar."
+    }
+
+    data-lake = {                                    # ← el producto nuevo
+      nombre      = "Data Lake"
+      ruta        = "modules/data-lake"
+      descripcion = "Bucket con catálogo Glue y permisos de lectura."
+    }
+  }
+}
+```
+
+`terraform apply` y ya: de esa entrada salen una CodePipeline, sus tres proyectos de
+CodeBuild, sus log groups y sus dos roles. No se copia ni una línea de HCL.
+
+| Campo | Para qué | Cuidado |
+|---|---|---|
+| **clave** | Prefijo de los recursos AWS (`aurex-os-<clave>-*`) | Cambiarla **destruye y recrea** la pipeline |
+| `nombre` | Cómo se ve en Service Catalog | Es la clave con la que Publish busca el producto: cambiarlo crea uno **nuevo** en vez de versionar el que había |
+| `ruta` | Dónde viven los `.tf`, desde la raíz del repo | Los `.tf` acaban en la **raíz** del `.tar.gz`; lo exige el parameter parser |
+
+### Antes de añadir uno: mira el Launch Role
+
+Es el error más caro, porque aparece al final. El Launch Role de `catalog-bootstrap` está
+acotado a lo que necesita `standard-environment` — VPC, S3, y roles IAM que casen
+`*-environment-access`. Un producto que cree RDS o EKS **pasa validate, pasa publish, y
+falla al aprovisionar**, cuando el usuario final ya le dio a "Launch".
+
+Si el producto nuevo toca servicios distintos, hay que ampliar
+`data.aws_iam_policy_document.launch_role_permissions` en
+`modules/catalog-bootstrap-terraform-os/main.tf`.
+
+### ¿Y productos en OTROS repositorios?
+
+Se puede, pero no sale gratis. `github_repository_id` ya es variable del módulo, así que
+moverla al mapa es una línea. Lo que cuesta es lo de alrededor:
+
+- **Las políticas viven aquí.** `policy_source_path = "policies"` se resuelve dentro del
+  artefacto del `Source`. Si la pipeline trae un repo externo, `policies/` no está ahí y la
+  etapa Inspect no evalúa nada. Hace falta un segundo source action, o publicar las
+  políticas a S3.
+- **La conexión cubre una organización.** Repos bajo la misma org de GitHub reutilizan la
+  conexión sin coste. Otra org = otra conexión y otra autorización manual en consola.
+
+Por eso el taller mantiene los productos en este repo: enseña el patrón sin pagar esa
+complejidad.
+
 ## Gobierno del catálogo: inspección y coste
 
 Un producto de catálogo necesita puertas de calidad, igual que cualquier otro producto.

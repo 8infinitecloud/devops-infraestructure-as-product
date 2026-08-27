@@ -57,7 +57,7 @@ resource "aws_iam_role_policy" "codebuild" {
         Sid      = "Artifacts"
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:ListBucket"]
-        Resource = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"]
+        Resource = ["arn:${local.partition}:s3:::${var.artifact_bucket_name}", "arn:${local.partition}:s3:::${var.artifact_bucket_name}/*"]
       },
       {
         Sid    = "ServiceCatalogPublishing"
@@ -157,7 +157,7 @@ resource "aws_codebuild_project" "publish" {
 
     environment_variable {
       name  = "ARTIFACT_BUCKET"
-      value = aws_s3_bucket.artifacts.bucket
+      value = var.artifact_bucket_name
     }
     environment_variable {
       name  = "PORTFOLIO_ID"
@@ -221,7 +221,7 @@ resource "aws_iam_role_policy" "pipeline" {
       {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:GetBucketVersioning", "s3:ListBucket"]
-        Resource = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"]
+        Resource = ["arn:${local.partition}:s3:::${var.artifact_bucket_name}", "arn:${local.partition}:s3:::${var.artifact_bucket_name}/*"]
       },
       {
         Effect = "Allow"
@@ -245,7 +245,7 @@ resource "aws_codepipeline" "this" {
 
   artifact_store {
     type     = "S3"
-    location = aws_s3_bucket.artifacts.bucket
+    location = var.artifact_bucket_name
   }
 
   stage {

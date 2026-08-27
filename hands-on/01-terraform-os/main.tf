@@ -13,8 +13,37 @@ data "aws_region" "current" {}
 locals {
   # El nombre del bucket es determinista, asi que se puede pasar a los modulos
   # que lo necesitan sin crear una dependencia circular: catalog-bootstrap
-  # concede permisos sobre el, catalog-pipeline lo crea.
+  # concede permisos sobre el, catalog-shared lo crea.
   artifact_bucket = "aurex-sc-artifacts-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}"
+
+  # -------------------------------------------------------------------------
+  # EL CATALOGO.
+  #
+  # Anadir un producto es anadir una entrada aqui y crear su carpeta bajo
+  # `modules/`. Nada mas: la pipeline, sus tres proyectos de CodeBuild, sus log
+  # groups y sus roles salen del for_each de abajo.
+  #
+  # Eso es la tesis del taller: el catalogo son DATOS, no codigo copiado.
+  #
+  #   clave  -> prefijo de los recursos AWS. Tiene que ser unico y estable:
+  #             cambiarlo destruye y recrea la pipeline de ese producto.
+  #   nombre -> como se ve en Service Catalog. Es la clave con la que la etapa
+  #             Publish busca el producto, asi que cambiarlo crea uno NUEVO en
+  #             vez de publicar una version del que ya habia.
+  #   ruta   -> donde viven los .tf, relativo a la raiz del repositorio.
+  #
+  # ANTES de anadir un producto, lee el Launch Role de `catalog-bootstrap`: sus
+  # permisos estan acotados a lo que necesita standard-environment. Un producto
+  # que cree RDS o EKS pasa validate, pasa publish, y falla al APROVISIONAR, que
+  # es el sitio mas caro para enterarse.
+  # -------------------------------------------------------------------------
+  productos = {
+    standard-environment = {
+      nombre      = "Standard Environment"
+      ruta        = "modules/standard-environment"
+      descripcion = "Red, almacenamiento y rol de acceso estandar."
+    }
+  }
 }
 
 module "engine" {
@@ -43,23 +72,42 @@ module "catalog_bootstrap" {
   grant_access_to_principal_arns = var.grant_access_to_principal_arns
 }
 
+# ---------------------------------------------------------------------------
+# Lo que comparten TODAS las pipelines: el bucket de artefactos y la conexion a
+# GitHub. Uno para todo el catalogo, no uno por producto.
+# ---------------------------------------------------------------------------
+
+module "catalog_shared" {
+  source = "../../modules/catalog-shared"
+
+  artifact_bucket_name    = local.artifact_bucket
+  existing_connection_arn = var.existing_connection_arn
+  connection_name         = "aurex-os-github"
+}
+
+# ---------------------------------------------------------------------------
+# Una pipeline por producto del catalogo.
+# ---------------------------------------------------------------------------
+
 module "catalog_pipeline" {
-  source = "../../modules/catalog-pipeline"
+  source   = "../../modules/catalog-pipeline"
+  for_each = local.productos
 
   # EXTERNAL enruta a las colas ServiceCatalogExternal* de este motor.
-  product_type = "EXTERNAL"
-  name_prefix  = "aurex-os-catalog"
-  product_name = "Standard Environment"
+  product_type        = "EXTERNAL"
+  name_prefix         = "aurex-os-${each.key}"
+  product_name        = each.value.nombre
+  product_description = each.value.descripcion
+  module_source_path  = each.value.ruta
 
   portfolio_id         = module.catalog_bootstrap.portfolio_id
   launch_role_arn      = module.catalog_bootstrap.launch_role_arn
-  artifact_bucket_name = local.artifact_bucket
+  artifact_bucket_name = module.catalog_shared.artifact_bucket_name
+  connection_arn       = module.catalog_shared.connection_arn
 
-  github_repository_id    = var.github_repository_id
-  github_branch           = var.github_branch
-  existing_connection_arn = var.existing_connection_arn
-  module_source_path      = "modules/standard-environment"
-  terraform_cli_version   = var.terraform_cli_version
+  github_repository_id  = var.github_repository_id
+  github_branch         = var.github_branch
+  terraform_cli_version = var.terraform_cli_version
 
   # Etapa Inspect + aprobacion manual
   policy_source_path           = "policies"
