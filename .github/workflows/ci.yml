@@ -41,7 +41,7 @@ jobs:
     name: Terraform fmt + validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -85,7 +85,7 @@ jobs:
           - name: parser Terraform OS
             dir: modules/terraform-os-engine/lambda-functions/terraform_open_source_parameter_parser
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:
@@ -110,7 +110,7 @@ jobs:
       run:
         working-directory: modules/terraform-os-engine/lambda-functions
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -154,7 +154,7 @@ jobs:
       GITLEAKS_V: "8.30.1"
       CONFTEST_V: "0.69.0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Gitleaks escanea el historial, no solo el arbol de trabajo.
           fetch-depth: 0
