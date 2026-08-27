@@ -33,6 +33,23 @@ No entra:
   que uno esta mal aceptado, abre un issue normal y lo discutimos.
 - El coste de lo que despliegues.
 
+## Dependencias
+
+Dependabot esta activado **solo para avisos de seguridad**: salta cuando una
+dependencia tiene un CVE, no cuando simplemente hay version nueva. Por eso no
+hay `.github/dependabot.yml` en el repo — su presencia es lo que activa los
+bumps rutinarios.
+
+Es una decision, no un olvido. Casi todas las dependencias del repo estan en
+`modules/terraform-os-engine/` y `modules/hcp-terraform-engine/`, que son codigo
+vendorizado: actualizar el SDK de AWS del motor de HashiCorp por nuestra cuenta
+va en contra de lo que pide CONTRIBUTING.md, porque esa decision se toma aguas
+arriba. Un PR automatico al mes proponiendo justo eso es ruido que acaba
+tapando el aviso que si importa.
+
+Un CVE es otra cosa: ahi hay que actuar, y para eso siguen activos los avisos y
+las actualizaciones automaticas de seguridad.
+
 ## Codigo de terceros
 
 Los directorios `modules/terraform-os-engine/` y `modules/hcp-terraform-engine/`
