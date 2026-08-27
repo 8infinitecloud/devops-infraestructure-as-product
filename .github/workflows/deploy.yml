@@ -6,20 +6,27 @@
 #   Credenciales  vienen de los secrets del repositorio, no del entorno
 #   State         se guarda en S3, no en un fichero local
 #
-# CONFIGURACION, una vez (Settings -> Secrets and variables -> Actions):
+# AUTENTICACION: acepta las dos formas y elige sola. Si existe la variable
+# AWS_DEPLOY_ROLE_ARN usa OIDC; si no, cae a las claves de los secrets.
 #
-#   Secrets   AWS_ACCESS_KEY_ID       obligatorio
-#             AWS_SECRET_ACCESS_KEY   obligatorio
-#             TFE_TOKEN               solo para el hands-on 02
+#   OIDC     Variable AWS_DEPLOY_ROLE_ARN
+#            Sin claves guardadas: GitHub presenta un token firmado y AWS lo
+#            cambia por credenciales temporales de una hora. Exige crear antes el
+#            rol de confianza: ver bootstrap-oidc/.
+#
+#   Claves   Secrets AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+#            Sin preparacion previa. A cambio son credenciales de larga duracion:
+#            el usuario IAM deberia existir solo para esto y conviene borrarlas al
+#            acabar el taller.
+#
+# RESTO DE CONFIGURACION (Settings -> Secrets and variables -> Actions):
+#
+#   Secrets   TFE_TOKEN               solo para el hands-on 02
 #
 #   Variables AWS_REGION              opcional, por defecto us-east-1
 #             TF_STATE_BUCKET         opcional, se deriva de la cuenta si falta
 #             CODECONNECTIONS_ARN     opcional, una conexion ya autorizada
 #             TFC_ORGANIZATION        solo para el hands-on 02
-#
-# Sobre las claves: son credenciales de larga duracion. El usuario IAM que las
-# emite deberia existir solo para esto, y conviene borrarlas al acabar el taller.
-# La alternativa sin claves es OIDC, que exige crear antes un rol de confianza.
 
 name: Desplegar en AWS
 
@@ -54,6 +61,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write   # lo exige OIDC; inocuo cuando se usan claves
 
 jobs:
   desplegar:
@@ -82,29 +90,44 @@ jobs:
           echo "::warning::Service Catalog. Si se destruye el motor primero, no queda nada capaz"
           echo "::warning::de ejecutar su destroy y los recursos se quedan huerfanos en la cuenta."
 
-      - name: Comprobar que estan las credenciales
+      - name: Comprobar que hay una forma de autenticarse
         env:
+          ROL: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           KEY_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           TFE: ${{ secrets.TFE_TOKEN }}
         run: |
           set -euo pipefail
-          falta=""
-          [ -n "${KEY_ID}" ]     || falta="${falta} AWS_ACCESS_KEY_ID"
-          [ -n "${KEY_SECRET}" ] || falta="${falta} AWS_SECRET_ACCESS_KEY"
-          if [ "${{ inputs.hands_on }}" = "02" ] && [ -z "${TFE}" ]; then
-            falta="${falta} TFE_TOKEN"
-          fi
-          if [ -n "${falta}" ]; then
-            echo "::error::Faltan secrets del repositorio:${falta}"
-            echo "::error::Settings -> Secrets and variables -> Actions -> New repository secret"
+          if [ -n "${ROL}" ]; then
+            echo "Modo OIDC: se asumira ${ROL}"
+          elif [ -n "${KEY_ID}" ] && [ -n "${KEY_SECRET}" ]; then
+            echo "Modo claves: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY"
+          else
+            echo "::error::No hay forma de autenticarse contra AWS. Configura UNA de las dos:"
+            echo "::error::  OIDC   -> variable AWS_DEPLOY_ROLE_ARN  (ver bootstrap-oidc/)"
+            echo "::error::  Claves -> secrets AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY"
+            echo "::error::Settings -> Secrets and variables -> Actions"
             exit 1
           fi
-          echo "Credenciales presentes."
+          if [ "${{ inputs.hands_on }}" = "02" ] && [ -z "${TFE}" ]; then
+            echo "::error::El hands-on 02 necesita el secret TFE_TOKEN."
+            exit 1
+          fi
 
       - uses: actions/checkout@v4
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      # Los dos pasos son excluyentes: manda la variable AWS_DEPLOY_ROLE_ARN.
+      - name: Credenciales temporales via OIDC
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: taller-${{ inputs.hands_on }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Credenciales con claves
+        if: vars.AWS_DEPLOY_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

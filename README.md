@@ -41,6 +41,8 @@ modules/                            LA PLATAFORMA
 products/                           LO QUE LA PLATAFORMA SIRVE
   standard-environment/             red + almacenamiento + rol de acceso
 
+bootstrap-oidc/                     OPCIONAL — rol para desplegar desde Actions sin claves
+
 hands-on/
   01-terraform-os/     compone engine + bootstrap + pipeline con un provider
   02-hcp-terraform/    igual, con el motor de HCP Terraform
@@ -198,12 +200,37 @@ runner es efímero:
 | Credenciales | Las del entorno | Secrets del repositorio |
 | State | `terraform.tfstate` en disco | S3 con bloqueo en DynamoDB |
 
-Configuración, una vez, en **Settings → Secrets and variables → Actions**:
+#### Autenticación: elige una, el workflow detecta cuál
+
+Acepta las dos formas. Si existe la variable `AWS_DEPLOY_ROLE_ARN` usa OIDC; si no, cae a
+las claves.
+
+| | OIDC | Claves |
+|---|---|---|
+| Qué configuras | Variable `AWS_DEPLOY_ROLE_ARN` | Secrets `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
+| Preparación previa | `terraform apply` en `bootstrap-oidc/`, una vez | Ninguna |
+| Credenciales | Temporales, una hora. Nada guardado en GitHub | De larga duración, guardadas en el repo |
+| Quién puede usarlas | Solo esa rama de ese repo | Quien tenga la clave |
+
+**OIDC** es lo correcto si el repo va a vivir. Rompe el círculo —Actions necesita un rol y
+no puede creárselo— con un apply que haces tú:
+
+```bash
+cd bootstrap-oidc
+terraform init && terraform apply -var github_org=TU-ORG
+gh variable set AWS_DEPLOY_ROLE_ARN --body "$(terraform output -raw role_arn)"
+```
+
+Ese módulo acota la confianza a **un repositorio y una rama**: un workflow en otra rama, o
+en un fork, no obtiene credenciales. Ese es el control real, no los permisos del rol.
+
+**Claves** es lo pragmático si solo quieres que funcione hoy. Que el usuario IAM exista
+solo para el taller y bórralas al acabar.
+
+#### El resto de la configuración
 
 | | Nombre | Cuándo |
 |---|---|---|
-| Secret | `AWS_ACCESS_KEY_ID` | Siempre |
-| Secret | `AWS_SECRET_ACCESS_KEY` | Siempre |
 | Secret | `TFE_TOKEN` | Solo hands-on 2 |
 | Variable | `AWS_REGION` | Opcional — por defecto `us-east-1` |
 | Variable | `TFC_ORGANIZATION` | Solo hands-on 2 |
@@ -212,16 +239,12 @@ Configuración, una vez, en **Settings → Secrets and variables → Actions**:
 
 El bucket del state y la tabla de bloqueo **los crea el propio workflow** si no existen. Es
 lo único de todo el repo que no crea Terraform, y no por gusto: es donde Terraform guarda
-su propio state, así que no puede crearlo él mismo.
+su propio state, así que no puede crearlo él mismo. Están fuera de `bootstrap-oidc/` a
+propósito, para que el camino de las claves no necesite ningún paso previo.
 
 Para destruir hay que escribir `DESTRUIR` en el formulario. Y antes, terminar los productos
 aprovisionados: si se destruye el motor primero, no queda nada capaz de ejecutar su
 `destroy`.
-
-> Son claves de larga duración. El usuario IAM que las emite debería existir solo para
-> esto, y conviene borrarlas al acabar el taller. La alternativa sin claves es OIDC, pero
-> exige crear antes un rol de confianza en la cuenta —un paso previo que para un taller no
-> compensa.
 
 ### El paso que no se puede automatizar
 
