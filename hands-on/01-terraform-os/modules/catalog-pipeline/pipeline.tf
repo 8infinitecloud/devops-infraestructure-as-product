@@ -1,4 +1,12 @@
 locals {
+  # Solo un cambio en un producto o en las politicas justifica republicar. Se
+  # derivan del catalogo para que anadir un producto no obligue a acordarse de
+  # tocar tambien el filtro.
+  trigger_paths = length(var.trigger_file_paths) > 0 ? var.trigger_file_paths : concat(
+    [for p in var.productos : "${p.ruta}/**"],
+    ["${var.policy_source_path}/**"],
+  )
+
   # El catalogo viaja a los buildspecs como JSON en una variable de entorno.
   # Cambiar el mapa `productos` cambia este valor, y eso vuelve a desplegar los
   # proyectos de CodeBuild: no hace falta tocar nada mas para anadir un producto.
@@ -241,8 +249,11 @@ resource "aws_iam_role_policy" "pipeline" {
 }
 
 resource "aws_codepipeline" "this" {
-  name     = "${var.name_prefix}-pipeline"
-  role_arn = aws_iam_role.pipeline.arn
+  name = "${var.name_prefix}-pipeline"
+  # V2 es lo que permite filtrar por ruta. Una pipeline V1 se suscribe a la rama
+  # entera y no hay forma de acotarla.
+  pipeline_type = "V2"
+  role_arn      = aws_iam_role.pipeline.arn
 
   artifact_store {
     type     = "S3"
@@ -263,7 +274,11 @@ resource "aws_codepipeline" "this" {
         ConnectionArn    = local.connection_arn
         FullRepositoryId = var.github_repository_id
         BranchName       = var.github_branch
-        DetectChanges    = "true"
+
+        # Lo dispara el bloque `trigger` de abajo, que ademas filtra por ruta.
+        # Dejarlo en true haria que convivieran dos mecanismos y la pipeline
+        # arrancaria igualmente con cualquier commit.
+        DetectChanges = "false"
       }
     }
   }
@@ -336,6 +351,24 @@ resource "aws_codepipeline" "this" {
 
       configuration = {
         ProjectName = aws_codebuild_project.publish.name
+      }
+    }
+  }
+
+  # Sin esto, un commit al README publicaria una version nueva del producto.
+  trigger {
+    provider_type = "CodeStarSourceConnection"
+
+    git_configuration {
+      source_action_name = "GitHub"
+
+      push {
+        branches {
+          includes = [var.github_branch]
+        }
+        file_paths {
+          includes = local.trigger_paths
+        }
       }
     }
   }

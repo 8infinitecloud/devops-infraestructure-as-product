@@ -96,6 +96,24 @@ variable "terraform_cli_version" {
   default     = "1.5.7"
 }
 
+variable "trigger_file_paths" {
+  type        = list(string)
+  description = <<-EOT
+    Rutas cuyo cambio dispara la pipeline.
+
+    Vacio => se derivan del catalogo: la ruta de cada producto mas la de las
+    politicas. Es lo que se quiere casi siempre, y evita tener que acordarse de
+    tocar el filtro al anadir un producto.
+
+    Sin filtro, CUALQUIER commit a la rama —un README, un .gitignore— publica una
+    version nueva de todos los productos. Se ve enseguida en el historial de
+    versiones y ensucia el catalogo.
+
+    Para volver al comportamiento de disparar siempre: ["**"].
+  EOT
+  default     = []
+}
+
 variable "log_retention_days" {
   type        = number
   default     = 30
