@@ -16,13 +16,13 @@ locals {
   # El catalogo, igual que en el Hands-on 1. Anadir un producto es anadir una
   # entrada aqui; ver el comentario largo en hands-on/01-terraform-os/main.tf.
   #
-  # Sirve el MISMO modulo que el Hands-on 1 —modules/standard-environment—, que
+  # Sirve el MISMO modulo que el Hands-on 1 —products/standard-environment—, que
   # es justo lo que el taller quiere ensenar: el modulo no sabe que motor lo
   # ejecuta por debajo.
   productos = {
     standard-environment = {
       nombre      = "Standard Environment (HCP Terraform)"
-      ruta        = "modules/standard-environment"
+      ruta        = "products/standard-environment"
       descripcion = "Red, almacenamiento y rol de acceso estandar. Aplicado en un workspace de HCP Terraform."
     }
   }

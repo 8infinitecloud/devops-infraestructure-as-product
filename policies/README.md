@@ -12,7 +12,7 @@ deprecados). Esto cubre lo específico de Aurex.
 En la etapa `Inspect` de la pipeline, contra los `.tf` del módulo:
 
 ```bash
-conftest test --parser hcl2 --combine --policy policies/ modules/standard-environment/*.tf
+conftest test --parser hcl2 --combine --policy policies/ products/standard-environment/*.tf
 ```
 
 Se parsea el HCL directamente porque en el momento de publicar **todavía no hay un
@@ -45,6 +45,6 @@ deliberadamente malo (deben dispararse todas las reglas). Una política que apru
 sirve de nada:
 
 ```bash
-conftest test --parser hcl2 --combine --policy policies/ --all-namespaces modules/standard-environment/*.tf
+conftest test --parser hcl2 --combine --policy policies/ --all-namespaces products/standard-environment/*.tf
 # -> 11 tests, 11 passed
 ```

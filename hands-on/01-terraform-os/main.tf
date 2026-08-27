@@ -40,7 +40,7 @@ locals {
   productos = {
     standard-environment = {
       nombre      = "Standard Environment"
-      ruta        = "modules/standard-environment"
+      ruta        = "products/standard-environment"
       descripcion = "Red, almacenamiento y rol de acceso estandar."
     }
   }

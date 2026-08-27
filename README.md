@@ -30,13 +30,16 @@ que consume un equipo no depende de cómo se ejecuta por debajo.
 Módulos reutilizables por un lado, entornos que los componen por otro.
 
 ```
-modules/
+modules/                            LA PLATAFORMA
   terraform-os-engine/              motor Hands-on 1: SQS, Lambdas, Step Functions, CodeBuild
   hcp-terraform-engine/             motor Hands-on 2: envuelve el módulo de HashiCorp
   catalog-bootstrap-terraform-os/   Portfolio + Launch Role
   catalog-bootstrap-hcp-terraform/  Launch Role + acceso (el Portfolio lo crea el motor)
-  catalog-pipeline/                 CodePipeline — UNO SOLO para los dos hands-on
-  standard-environment/             el módulo de producto: red + almacenamiento + rol
+  catalog-shared/                   bucket de artefactos + conexión — UNO por catálogo
+  catalog-pipeline/                 CodePipeline — UNA POR PRODUCTO
+
+products/                           LO QUE LA PLATAFORMA SIRVE
+  standard-environment/             red + almacenamiento + rol de acceso
 
 hands-on/
   01-terraform-os/     compone engine + bootstrap + pipeline con un provider
@@ -56,7 +59,7 @@ Tres reglas que hacen que esto componga:
   Terraform OS, `TERRAFORM_CLOUD` para el de HCP Terraform).
 
 `standard-environment` es **el mismo módulo para los dos hands-on**: ambas pipelines apuntan
-a `modules/standard-environment`. No hay copia.
+a `products/standard-environment`. No hay copia.
 
 ## Qué cambia entre los dos hands-on
 
@@ -350,7 +353,7 @@ locals {
   productos = {
     standard-environment = {
       nombre      = "Standard Environment"
-      ruta        = "modules/standard-environment"
+      ruta        = "products/standard-environment"
       descripcion = "Red, almacenamiento y rol de acceso estándar."
     }
 

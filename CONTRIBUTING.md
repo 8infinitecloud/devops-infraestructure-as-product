@@ -9,8 +9,8 @@ Lo que el CI comprueba, en el mismo orden en que falla:
 terraform fmt -check -recursive
 
 # 2. Validacion — en cada directorio afectado
-terraform -chdir=modules/standard-environment init -backend=false
-terraform -chdir=modules/standard-environment validate
+terraform -chdir=products/standard-environment init -backend=false
+terraform -chdir=products/standard-environment validate
 
 # 3. Tests de las Lambdas afectadas
 cd modules/hcp-terraform-engine/engine/lambda-functions && go test ./...
@@ -48,7 +48,7 @@ ensena el `.tf` que la regla **rechaza** y el que **acepta**:
 
 ```bash
 conftest test --parser hcl2 --combine --all-namespaces \
-  --policy policies modules/standard-environment/*.tf
+  --policy policies products/standard-environment/*.tf
 ```
 
 ## Commits
