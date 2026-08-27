@@ -50,7 +50,6 @@ products/                           LO ÚNICO QUE COMPARTEN — y es el punto de
   standard-environment/             red + almacenamiento + rol de acceso
 
 policies/                           las políticas que evalúan las dos pipelines
-bootstrap-oidc/                     OPCIONAL — rol para desplegar desde Actions sin claves
 
 hands-on/
   01-terraform-os/     compone engine + bootstrap + pipeline con un provider
@@ -217,41 +216,46 @@ las claves.
 | | OIDC | Claves |
 |---|---|---|
 | Qué configuras | Variable `AWS_DEPLOY_ROLE_ARN` | Secrets `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
-| Preparación previa | `terraform apply` en `bootstrap-oidc/`, una vez | Ninguna |
+| Preparación previa | Que el rol exista en la cuenta | Ninguna |
 | Credenciales | Temporales, una hora. Nada guardado en GitHub | De larga duración, guardadas en el repo |
 | Quién puede usarlas | Solo esa rama de ese repo | Quien tenga la clave |
 
-**OIDC** es lo correcto si el repo va a vivir. Rompe el círculo —Actions necesita un rol y
-no puede creárselo— con un apply que haces tú:
+**OIDC** si el rol ya existe en la cuenta. **Este repo no lo crea**: montar roles IAM para
+el CI es del dueño de la cuenta, no de un repo de taller — y con ello, la decisión de qué
+permisos lleva, que no le toca decidir a esto. Pones el ARN en la variable y ya:
 
 ```bash
-cd bootstrap-oidc
-terraform init
-
-# ¿Tu cuenta ya tiene el proveedor OIDC de GitHub? Comprúebalo primero:
-aws iam list-open-id-connect-providers
-
-# Si sale uno de token.actions.githubusercontent.com, pásalo:
-terraform apply -var github_org=TU-ORG \
-  -var existing_oidc_provider_arn=arn:aws:iam::<cuenta>:oidc-provider/token.actions.githubusercontent.com
-
-# Si no sale ninguno, se crea solo:
-terraform apply -var github_org=TU-ORG
-
-gh variable set AWS_DEPLOY_ROLE_ARN --body "$(terraform output -raw role_arn)"
+gh variable set AWS_DEPLOY_ROLE_ARN --body arn:aws:iam::<cuenta>:role/<tu-rol>
 ```
 
-> Ese `list-open-id-connect-providers` no es opcional. El proveedor OIDC es un recurso **por
-> cuenta** y AWS solo admite uno por URL: si ya lo tienes de otro proyecto, crear otro falla
-> con `EntityAlreadyExists`. No se ve venir, porque el proveedor es global y no aparece en
-> ninguna parte del taller.
->
-> Y ojo con no confundirlo con el **otro** OIDC del repo: el motor del Hands-on 2 crea uno
-> para `app.terraform.io`, que es cómo un workspace de HCP Terraform entra en tu cuenta a
-> aprovisionar. Distinta URL, distinto propósito, y conviven sin chocar.
+Si no existe y tienes que crearlo, lo único específico es la política de confianza. Esta
+condición `sub` es **el** control de acceso: sin ella, cualquier repositorio de GitHub podría
+asumir el rol.
 
-Ese módulo acota la confianza a **un repositorio y una rama**: un workflow en otra rama, o
-en un fork, no obtiene credenciales. Ese es el control real, no los permisos del rol.
+```json
+{
+  "Effect": "Allow",
+  "Principal": { "Federated": "arn:aws:iam::<cuenta>:oidc-provider/token.actions.githubusercontent.com" },
+  "Action": "sts:AssumeRoleWithWebIdentity",
+  "Condition": {
+    "StringEquals": {
+      "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+      "token.actions.githubusercontent.com:sub": "repo:TU-ORG/TU-REPO:ref:refs/heads/main"
+    }
+  }
+}
+```
+
+Comprueba antes si tu cuenta ya tiene el proveedor OIDC — es un recurso **por cuenta** y solo
+cabe uno por URL:
+
+```bash
+aws iam list-open-id-connect-providers
+```
+
+> No lo confundas con el **otro** OIDC del repo: el motor del Hands-on 2 crea uno para
+> `app.terraform.io`, que es cómo un workspace de HCP Terraform entra en tu cuenta a
+> aprovisionar. Distinta URL, distinto propósito, y conviven sin chocar.
 
 **Claves** es lo pragmático si solo quieres que funcione hoy. Que el usuario IAM exista
 solo para el taller y bórralas al acabar.
@@ -268,8 +272,7 @@ solo para el taller y bórralas al acabar.
 
 El bucket del state y la tabla de bloqueo **los crea el propio workflow** si no existen. Es
 lo único de todo el repo que no crea Terraform, y no por gusto: es donde Terraform guarda
-su propio state, así que no puede crearlo él mismo. Están fuera de `bootstrap-oidc/` a
-propósito, para que el camino de las claves no necesite ningún paso previo.
+su propio state, así que no puede crearlo él mismo.
 
 Para destruir hay que escribir `DESTRUIR` en el formulario. Y antes, terminar los productos
 aprovisionados: si se destruye el motor primero, no queda nada capaz de ejecutar su

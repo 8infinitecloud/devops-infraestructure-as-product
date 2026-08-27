@@ -11,8 +11,10 @@
 #
 #   OIDC     Variable AWS_DEPLOY_ROLE_ARN
 #            Sin claves guardadas: GitHub presenta un token firmado y AWS lo
-#            cambia por credenciales temporales de una hora. Exige crear antes el
-#            rol de confianza: ver bootstrap-oidc/.
+#            cambia por credenciales temporales de una hora. El rol tiene que
+#            existir ya en la cuenta: este repo NO lo crea, porque crear roles
+#            IAM para el CI es del dueño de la cuenta. El README trae la politica
+#            de confianza que necesita.
 #
 #   Claves   Secrets AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
 #            Sin preparacion previa. A cambio son credenciales de larga duracion:
@@ -104,7 +106,7 @@ jobs:
             echo "Modo claves: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY"
           else
             echo "::error::No hay forma de autenticarse contra AWS. Configura UNA de las dos:"
-            echo "::error::  OIDC   -> variable AWS_DEPLOY_ROLE_ARN  (ver bootstrap-oidc/)"
+            echo "::error::  OIDC   -> variable AWS_DEPLOY_ROLE_ARN con un rol que ya exista"
             echo "::error::  Claves -> secrets AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY"
             echo "::error::Settings -> Secrets and variables -> Actions"
             exit 1

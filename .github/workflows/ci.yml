@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           FAILED=""
-          for dir in products/* hands-on/*/modules/* hands-on/*-* bootstrap-oidc; do
+          for dir in products/* hands-on/*/modules/* hands-on/*-*; do
             [ -d "$dir" ] || continue
             # `hcp-terraform-engine/engine` es un submodulo interno; se valida
             # desde su raiz, que es la que declara los providers.
@@ -190,7 +190,7 @@ jobs:
         continue-on-error: true
         run: |
           set -uo pipefail
-          for dir in products/* hands-on/*/modules/* hands-on/*-* bootstrap-oidc; do
+          for dir in products/* hands-on/*/modules/* hands-on/*-*; do
             ls "$dir"/*.tf >/dev/null 2>&1 || continue
             echo "== $dir =="
             tflint --chdir="$dir" --init >/dev/null 2>&1 || true
