@@ -52,7 +52,19 @@ lambda-functions/build/
 # Fixtures de los tests Go. Sin ellos, `go test` pasa en local (donde el fichero
 # esta en disco pero ignorado) y falla en un checkout limpio. Son ~44 KB en total.
 !**/test-artifacts/*.tar.gz
+# `dist/` es SALIDA de Terraform: archive_file escribe ahi los zips de las
+# Lambdas y los regenera en cada plan. Versionarlos inflaba el artefacto de
+# Source de la pipeline a 109 MB, que se descarga en CADA etapa de CADA
+# ejecucion.
+dist/*.zip
 dist/*.whl
+
+# Binarios sueltos de un `go build` sin -o. El Makefile produce `bootstrap`;
+# cualquier otro nombre es basura de una compilacion local.
+**/lambda-functions/*/send-apply
+**/lambda-functions/*/poll-run-status
+**/lambda-functions/*/notify-run-result
+**/lambda-functions/*/send-destroy
 
 # --- SO / editor ----------------------------------------------------------
 .DS_Store
