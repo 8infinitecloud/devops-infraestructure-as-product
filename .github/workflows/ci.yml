@@ -87,7 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # La version sale del go.mod de cada modulo: son distintas y no deben
           # fijarse aqui.
