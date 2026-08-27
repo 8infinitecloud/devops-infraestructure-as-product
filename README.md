@@ -37,7 +37,7 @@ hands-on/                           CADA DEMO, COMPLETA Y AUTOSUFICIENTE
       engine/                       SQS, Lambdas, Step Functions, CodeBuild
       catalog-bootstrap/            Portfolio + Launch Role
       catalog-shared/               bucket de artefactos + conexión — UNO por catálogo
-      catalog-pipeline/             CodePipeline — UNA POR PRODUCTO
+      catalog-pipeline/             CodePipeline — UNA para todo el catálogo
   02-hcp-terraform/                 motor HCP Terraform — apply en un workspace
     main.tf
     modules/
@@ -421,14 +421,24 @@ locals {
 }
 ```
 
-`terraform apply` y ya: de esa entrada salen una CodePipeline, sus tres proyectos de
-CodeBuild, sus log groups y sus dos roles. No se copia ni una línea de HCL.
+`terraform apply` y ya. **No se crea infraestructura nueva**: hay UNA sola pipeline para
+todo el catálogo, y el mapa viaja a sus proyectos de CodeBuild como una variable de entorno.
+Verificado con un plan: 107 recursos con un producto, 107 con dos.
+
+La pipeline recorre el catálogo en cada etapa — valida y empaqueta cada producto, los
+inspecciona todos, y en `Publish` sube un `.tar.gz` por producto y registra su versión.
 
 | Campo | Para qué | Cuidado |
 |---|---|---|
-| **clave** | Prefijo de los recursos AWS (`aurex-os-<clave>-*`) | Cambiarla **destruye y recrea** la pipeline |
+| **clave** | Identificador interno; nombra el `.tar.gz` | — |
 | `nombre` | Cómo se ve en Service Catalog | Es la clave con la que Publish busca el producto: cambiarlo crea uno **nuevo** en vez de versionar el que había |
 | `ruta` | Dónde viven los `.tf`, desde la raíz del repo | Los `.tf` acaban en la **raíz** del `.tar.gz`; lo exige el parameter parser |
+
+> **Una pipeline para todos tiene un precio:** si la validación de un producto falla, no se
+> publica ninguno. Es deliberado — se eligió simplicidad sobre aislamiento. Por eso Validate
+> no se corta en el primer error: recorre el catálogo entero y lista al final todo lo roto.
+> En `Publish` sí continúa, porque un error transitorio de la API de AWS en el producto 3 no
+> debe dejar sin publicar al 4 y al 5.
 
 ### Antes de añadir uno: mira el Launch Role
 

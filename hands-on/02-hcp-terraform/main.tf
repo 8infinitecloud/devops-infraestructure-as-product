@@ -69,17 +69,15 @@ module "catalog_shared" {
 }
 
 module "catalog_pipeline" {
-  source   = "./modules/catalog-pipeline"
-  for_each = local.productos
+  source = "./modules/catalog-pipeline"
 
-  # TERRAFORM_CLOUD enruta a las colas ServiceCatalogTerraformCloud* de este motor.
-  product_type        = "TERRAFORM_CLOUD"
-  name_prefix         = "aurex-tfc-${each.key}"
-  product_name        = each.value.nombre
-  product_description = each.value.descripcion
+  # UNA sola pipeline para todo el catalogo. Anadir un producto es anadir una
+  # entrada al mapa `productos` de arriba: no crea infraestructura nueva, solo
+  # cambia la variable de entorno que reciben los proyectos de CodeBuild.
+  productos = local.productos
 
-  # EL MISMO modulo que el Hands-on 1. Sin copiar, sin reescribir.
-  module_source_path = each.value.ruta
+  product_type = "TERRAFORM_CLOUD"
+  name_prefix  = "aurex-tfc-catalog"
 
   portfolio_id         = module.catalog_bootstrap.portfolio_id
   launch_role_arn      = module.catalog_bootstrap.launch_role_arn
@@ -90,12 +88,6 @@ module "catalog_pipeline" {
   github_branch         = var.github_branch
   terraform_cli_version = var.terraform_version
 
-  # Etapa Inspect + aprobacion manual.
-  #
-  # OJO: aqui NO hay puerta de coste en el aprovisionamiento. El apply corre en
-  # HCP Terraform, no en un CodeBuild de esta cuenta, asi que no hay donde
-  # interceptar el plan. El equivalente seria una run task o una policy Sentinel
-  # en el workspace. Queda documentado en el README.
   policy_source_path           = "policies"
   infracost_api_key_secret_arn = var.infracost_api_key_secret_arn
   require_manual_approval      = var.require_manual_approval

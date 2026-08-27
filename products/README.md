@@ -22,8 +22,8 @@ productos = {
 }
 ```
 
-De esa entrada salen su pipeline, sus tres proyectos de CodeBuild, sus log groups y sus
-roles. El detalle completo, en el README de la raíz.
+No crea infraestructura: hay **una sola pipeline** para todo el catálogo y el mapa le llega
+como variable de entorno. El detalle completo, en el README de la raíz.
 
 ## Qué debe cumplir un producto
 

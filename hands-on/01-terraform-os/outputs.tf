@@ -15,16 +15,11 @@ output "artifact_bucket" {
   value = module.catalog_shared.artifact_bucket_name
 }
 
-# Una fila por producto del catalogo, para ver de un vistazo que pipeline
-# publica que modulo.
 output "catalogo" {
-  description = "Productos publicados y la pipeline que los construye"
+  description = "Productos que publica la pipeline"
   value = {
-    for k, m in module.catalog_pipeline : k => {
-      producto = m.product_name
-      pipeline = m.pipeline_name
-      modulo   = m.module_source_path
-    }
+    pipeline  = module.catalog_pipeline.pipeline_name
+    productos = module.catalog_pipeline.productos
   }
 }
 

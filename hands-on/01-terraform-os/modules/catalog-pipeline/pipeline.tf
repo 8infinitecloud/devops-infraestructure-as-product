@@ -1,4 +1,9 @@
 locals {
+  # El catalogo viaja a los buildspecs como JSON en una variable de entorno.
+  # Cambiar el mapa `productos` cambia este valor, y eso vuelve a desplegar los
+  # proyectos de CodeBuild: no hace falta tocar nada mas para anadir un producto.
+  products_json = jsonencode(var.productos)
+
   # Todos los proyectos de CodeBuild que la pipeline debe poder arrancar.
   codebuild_projects = {
     validate = aws_codebuild_project.validate
@@ -97,7 +102,7 @@ resource "aws_cloudwatch_log_group" "validate" {
 
 resource "aws_codebuild_project" "validate" {
   name          = "${var.name_prefix}-validate"
-  description   = "terraform fmt -check + terraform validate + empaquetado del modulo"
+  description   = "fmt + validate + empaquetado de TODOS los productos del catalogo"
   service_role  = aws_iam_role.codebuild.arn
   build_timeout = 20
 
@@ -115,8 +120,8 @@ resource "aws_codebuild_project" "validate" {
       value = var.terraform_cli_version
     }
     environment_variable {
-      name  = "MODULE_PATH"
-      value = var.module_source_path
+      name  = "PRODUCTS_JSON"
+      value = local.products_json
     }
   }
 
@@ -142,7 +147,7 @@ resource "aws_cloudwatch_log_group" "publish" {
 
 resource "aws_codebuild_project" "publish" {
   name          = "${var.name_prefix}-publish"
-  description   = "Sube el artefacto a S3 y publica una nueva version del producto en Service Catalog"
+  description   = "Sube los artefactos a S3 y publica una version nueva de cada producto"
   service_role  = aws_iam_role.codebuild.arn
   build_timeout = 20
 
@@ -166,10 +171,6 @@ resource "aws_codebuild_project" "publish" {
     environment_variable {
       name  = "LAUNCH_ROLE_ARN"
       value = local.launch_role_arn
-    }
-    environment_variable {
-      name  = "PRODUCT_NAME"
-      value = var.product_name
     }
     environment_variable {
       name  = "PRODUCT_OWNER"
@@ -351,7 +352,7 @@ resource "aws_cloudwatch_log_group" "inspect" {
 
 resource "aws_codebuild_project" "inspect" {
   name          = "${var.name_prefix}-inspect"
-  description   = "Checkov, TFLint, Gitleaks, Conftest e Infracost sobre el modulo a publicar"
+  description   = "Checkov, TFLint, Gitleaks, Conftest e Infracost sobre todos los productos"
   service_role  = aws_iam_role.codebuild.arn
   build_timeout = 30
 
@@ -365,8 +366,8 @@ resource "aws_codebuild_project" "inspect" {
     image        = "aws/codebuild/standard:7.0"
 
     environment_variable {
-      name  = "MODULE_PATH"
-      value = var.module_source_path
+      name  = "PRODUCTS_JSON"
+      value = local.products_json
     }
     environment_variable {
       name  = "POLICY_PATH"

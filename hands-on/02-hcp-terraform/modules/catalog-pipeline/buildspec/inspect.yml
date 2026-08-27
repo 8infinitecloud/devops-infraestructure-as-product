@@ -62,41 +62,56 @@ phases:
     commands:
       - |
         set -uo pipefail
-        : "${MODULE_PATH:?}" "${POLICY_PATH:?}"
-        FAILED=""
+        : "${PRODUCTS_JSON:?}" "${POLICY_PATH:?}"
+        FALLOS=""
+
+        # Las rutas de TODOS los productos del catalogo, separadas por espacio.
+        RUTAS="$(echo "${PRODUCTS_JSON}" | jq -r '[.[].ruta] | join(" ")')"
+        echo "Inspeccionando: ${RUTAS}"
 
         echo; echo "===================== CHECKOV ====================="
-        checkov --directory "${MODULE_PATH}" --framework terraform --compact \
-                --output cli --output junitxml --output-file-path console,reports/checkov.xml \
-          || FAILED="${FAILED} checkov"
+        for r in ${RUTAS}; do
+          echo "-- ${r}"
+          checkov --directory "${r}" --framework terraform --compact \
+                  --output cli --output junitxml \
+                  --output-file-path console,"reports/checkov-$(basename "${r}").xml" \
+            || FALLOS="${FALLOS} checkov:${r}"
+        done
 
         echo; echo "===================== TFLINT ======================"
-        tflint --chdir="${MODULE_PATH}" --init >/dev/null 2>&1 || true
-        tflint --chdir="${MODULE_PATH}" --format=junit > reports/tflint.xml 2>/dev/null \
-          || FAILED="${FAILED} tflint"
-        tflint --chdir="${MODULE_PATH}" --format=compact || true
+        for r in ${RUTAS}; do
+          echo "-- ${r}"
+          tflint --chdir="${r}" --init >/dev/null 2>&1 || true
+          tflint --chdir="${r}" --format=junit > "reports/tflint-$(basename "${r}").xml" 2>/dev/null \
+            || FALLOS="${FALLOS} tflint:${r}"
+          tflint --chdir="${r}" --format=compact || true
+        done
 
         echo; echo "==================== GITLEAKS ====================="
-        # Escanea TODO el repo, no solo el modulo: un secreto commiteado en
+        # Escanea TODO el repo, no solo los productos: un secreto commiteado en
         # cualquier sitio es igual de grave.
         gitleaks detect --source . --no-git --redact \
                  --report-format sarif --report-path reports/gitleaks.sarif \
-          || FAILED="${FAILED} gitleaks"
+          || FALLOS="${FALLOS} gitleaks"
 
         echo; echo "============ CONFTEST (politicas de Aurex) ========"
-        # --combine: el input pasa a ser la lista de todos los .tf, para que las
-        # reglas de modulo vean el conjunto y no archivo a archivo.
-        conftest test --parser hcl2 --combine --all-namespaces \
-                 --policy "${POLICY_PATH}" "${MODULE_PATH}"/*.tf \
-          || FAILED="${FAILED} conftest"
+        for r in ${RUTAS}; do
+          echo "-- ${r}"
+          # --combine: el input es la lista de todos los .tf del producto, para
+          # que las reglas de modulo vean el conjunto y no archivo a archivo.
+          conftest test --parser hcl2 --combine --all-namespaces \
+                   --policy "${POLICY_PATH}" "${r}"/*.tf \
+            || FALLOS="${FALLOS} conftest:${r}"
+        done
 
         echo; echo "==================== INFRACOST ===================="
         if [ -n "${INFRACOST_API_KEY:-}" ]; then
-          infracost breakdown --path "${MODULE_PATH}" \
-                    --format json --out-file reports/infracost.json || FAILED="${FAILED} infracost"
-          infracost breakdown --path "${MODULE_PATH}" --format table || true
+          for r in ${RUTAS}; do
+            echo "-- ${r}"
+            infracost breakdown --path "${r}" --format table || FALLOS="${FALLOS} infracost:${r}"
+          done
           echo
-          echo "NOTA: esta estimacion usa los valores POR DEFECTO del modulo."
+          echo "NOTA: esta estimacion usa los valores POR DEFECTO de cada modulo."
           echo "      El coste del despliegue real se calcula en el runner, sobre el"
           echo "      terraform plan con los parametros que elija el usuario final."
         else
@@ -104,8 +119,8 @@ phases:
         fi
 
         echo; echo "===================== RESUMEN ====================="
-        if [ -n "${FAILED}" ]; then
-          echo "Con hallazgos:${FAILED}"
+        if [ -n "${FALLOS}" ]; then
+          echo "Con hallazgos:${FALLOS}"
         else
           echo "Sin hallazgos."
         fi
@@ -114,10 +129,10 @@ phases:
 
 reports:
   checkov:
-    files: [reports/checkov.xml]
+    files: ['reports/checkov-*.xml']
     file-format: JUNITXML
   tflint:
-    files: [reports/tflint.xml]
+    files: ['reports/tflint-*.xml']
     file-format: JUNITXML
 
 artifacts:

@@ -23,11 +23,34 @@ variable "product_type" {
 
 variable "name_prefix" {
   type        = string
+  description = "Prefijo de los recursos. Permite que los dos hands-on convivan en la misma cuenta."
+  default     = "aurex-catalog"
+}
+
+variable "productos" {
+  type = map(object({
+    nombre      = string
+    ruta        = string
+    descripcion = optional(string, "Publicado por CodePipeline desde el repositorio del catalogo.")
+  }))
   description = <<-EOT
-    Prefijo de los recursos. Tiene que ser DISTINTO en cada instancia del modulo:
-    con for_each, dos productos con el mismo prefijo chocan en los nombres de los
-    proyectos de CodeBuild, de los log groups y de la propia pipeline.
+    El catalogo entero. UNA sola pipeline publica todos.
+
+      clave  -> identificador interno. Nombra el .tar.gz dentro del artefacto.
+      nombre -> como se ve en Service Catalog. Es la clave con la que Publish
+                busca el producto: cambiarlo crea uno NUEVO en vez de anadir una
+                version al que ya habia.
+      ruta   -> donde viven los .tf, desde la raiz del repositorio.
+
+    Consecuencia de tener una sola pipeline: si la validacion de UN producto
+    falla, no se publica NINGUNO. Es el precio de la simplicidad, y es
+    deliberado; para aislarlos haria falta una pipeline por producto.
   EOT
+
+  validation {
+    condition     = length(var.productos) > 0
+    error_message = "Hace falta al menos un producto."
+  }
 }
 
 variable "portfolio_id" {
@@ -59,22 +82,6 @@ variable "github_branch" {
   type        = string
   description = "Rama que dispara la pipeline"
   default     = "main"
-}
-
-variable "module_source_path" {
-  type        = string
-  description = "Ruta dentro del repo donde viven los .tf del modulo a publicar"
-}
-
-variable "product_name" {
-  type        = string
-  description = "Nombre del producto en Service Catalog. Es la clave con la que Publish lo busca."
-}
-
-variable "product_description" {
-  type        = string
-  description = "Descripcion del producto en el catalogo"
-  default     = "Publicado por CodePipeline desde el repositorio del catalogo."
 }
 
 variable "product_owner" {

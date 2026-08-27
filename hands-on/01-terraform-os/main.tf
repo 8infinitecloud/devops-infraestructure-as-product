@@ -20,13 +20,12 @@ locals {
   # EL CATALOGO.
   #
   # Anadir un producto es anadir una entrada aqui y crear su carpeta bajo
-  # `modules/`. Nada mas: la pipeline, sus tres proyectos de CodeBuild, sus log
-  # groups y sus roles salen del for_each de abajo.
+  # `products/`. Nada mas: NO se crea infraestructura nueva. La pipeline es UNA
+  # para todo el catalogo y recibe este mapa como JSON.
   #
   # Eso es la tesis del taller: el catalogo son DATOS, no codigo copiado.
   #
-  #   clave  -> prefijo de los recursos AWS. Tiene que ser unico y estable:
-  #             cambiarlo destruye y recrea la pipeline de ese producto.
+  #   clave  -> identificador interno. Nombra el .tar.gz dentro del artefacto.
   #   nombre -> como se ve en Service Catalog. Es la clave con la que la etapa
   #             Publish busca el producto, asi que cambiarlo crea uno NUEVO en
   #             vez de publicar una version del que ya habia.
@@ -90,15 +89,15 @@ module "catalog_shared" {
 # ---------------------------------------------------------------------------
 
 module "catalog_pipeline" {
-  source   = "./modules/catalog-pipeline"
-  for_each = local.productos
+  source = "./modules/catalog-pipeline"
 
-  # EXTERNAL enruta a las colas ServiceCatalogExternal* de este motor.
-  product_type        = "EXTERNAL"
-  name_prefix         = "aurex-os-${each.key}"
-  product_name        = each.value.nombre
-  product_description = each.value.descripcion
-  module_source_path  = each.value.ruta
+  # UNA sola pipeline para todo el catalogo. Anadir un producto es anadir una
+  # entrada al mapa `productos` de arriba: no crea infraestructura nueva, solo
+  # cambia la variable de entorno que reciben los proyectos de CodeBuild.
+  productos = local.productos
+
+  product_type = "EXTERNAL"
+  name_prefix  = "aurex-os-catalog"
 
   portfolio_id         = module.catalog_bootstrap.portfolio_id
   launch_role_arn      = module.catalog_bootstrap.launch_role_arn
@@ -109,7 +108,6 @@ module "catalog_pipeline" {
   github_branch         = var.github_branch
   terraform_cli_version = var.terraform_cli_version
 
-  # Etapa Inspect + aprobacion manual
   policy_source_path           = "policies"
   infracost_api_key_secret_arn = var.infracost_api_key_secret_arn
   require_manual_approval      = var.require_manual_approval
