@@ -34,7 +34,7 @@ phases:
       - |
         set -euo pipefail
 
-        : "${ACTION:?}" "${PP_DESCRIPTOR:?}" "${LAUNCH_ROLE_ARN:?}" "${TF_STATE_BUCKET:?}"
+        : "${ACTION:?}" "${PP_DESCRIPTOR:?}" "${PP_ID:?}" "${LAUNCH_ROLE_ARN:?}" "${TF_STATE_BUCKET:?}"
         export AWS_DEFAULT_REGION="${AWS_REGION}"
 
         # Normalizar los JSON opcionales que inyecta la Step Function
@@ -54,8 +54,11 @@ phases:
           > backend_override.tf.json
 
         # --- provider_override.tf.json --------------------------------
-        # session_name: primeros 64 caracteres del descriptor, con '/' -> '-'
-        SESSION_NAME="$(printf '%s' "${PP_DESCRIPTOR:0:64}" | tr '/' '-')"
+        # session_name: SOLO el id del producto aprovisionado. Antes eran los
+        # primeros 64 caracteres del descriptor, pero al llevar este el nombre
+        # delante, el truncado podia cortar el id y dejar a dos instancias del
+        # mismo producto con el mismo session_name en CloudTrail.
+        SESSION_NAME="${PP_ID}"
         ALL_TAGS="$(jq -n --argjson t "${TRACER_TAG_JSON}" --argjson g "${TAGS_JSON}" \
           'if ($t|length)>0 then [$t]+$g else $g end')"
         jq -n --arg r "${AWS_REGION}" --arg role "${LAUNCH_ROLE_ARN}" --arg sn "${SESSION_NAME}" \

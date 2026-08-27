@@ -17,12 +17,17 @@
           {
             "Name": "PP_DESCRIPTOR",
             "Type": "PLAINTEXT",
-            "Value.$": "States.Format('{}/{}', $.identity.awsAccountId, $.provisionedProductId)"
+            "Value.$": "States.Format('{}/{}-{}', $.identity.awsAccountId, $.provisionedProductName, $.provisionedProductId)"
           },
           {
             "Name": "LAUNCH_ROLE_ARN",
             "Type": "PLAINTEXT",
             "Value.$": "$.launchRoleArn"
+          },
+          {
+            "Name": "PP_ID",
+            "Type": "PLAINTEXT",
+            "Value.$": "$.provisionedProductId"
           }
         ]
       },
