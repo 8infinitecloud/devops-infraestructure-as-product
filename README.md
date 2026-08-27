@@ -152,7 +152,7 @@ Requiere `TFE_TOKEN` en el entorno.
 
 `make bin` + `terraform apply` a mano funciona, pero exige tener Go, Python, rsync y
 Terraform en la máquina, y compilar el binario **a x86-64 Linux**. En una sala con
-portátiles distintos, eso falla. Por eso hay un script.
+portátiles distintos, eso falla. Hay dos caminos que no dependen de tu máquina.
 
 ### AWS CloudShell — el camino corto
 
@@ -181,6 +181,44 @@ y hace el apply.
 
 La primera vez el script crea `terraform.tfvars` desde el ejemplo y te para para que lo
 rellenes.
+
+### GitHub Actions — desplegar desde el repositorio
+
+Actions → **Desplegar en AWS** → *Run workflow*. Eliges motor (`01`/`02`) y acción
+(`plan`/`apply`/`destroy`).
+
+Hace lo mismo que el script y en el mismo orden. Cambian dos cosas, las dos porque el
+runner es efímero:
+
+| | En local / CloudShell | En Actions |
+|---|---|---|
+| Credenciales | Las del entorno | Secrets del repositorio |
+| State | `terraform.tfstate` en disco | S3 con bloqueo en DynamoDB |
+
+Configuración, una vez, en **Settings → Secrets and variables → Actions**:
+
+| | Nombre | Cuándo |
+|---|---|---|
+| Secret | `AWS_ACCESS_KEY_ID` | Siempre |
+| Secret | `AWS_SECRET_ACCESS_KEY` | Siempre |
+| Secret | `TFE_TOKEN` | Solo hands-on 2 |
+| Variable | `AWS_REGION` | Opcional — por defecto `us-east-1` |
+| Variable | `TFC_ORGANIZATION` | Solo hands-on 2 |
+| Variable | `CODECONNECTIONS_ARN` | Opcional — una conexión ya autorizada |
+| Variable | `TF_STATE_BUCKET` | Opcional — se deriva de la cuenta |
+
+El bucket del state y la tabla de bloqueo **los crea el propio workflow** si no existen. Es
+lo único de todo el repo que no crea Terraform, y no por gusto: es donde Terraform guarda
+su propio state, así que no puede crearlo él mismo.
+
+Para destruir hay que escribir `DESTRUIR` en el formulario. Y antes, terminar los productos
+aprovisionados: si se destruye el motor primero, no queda nada capaz de ejecutar su
+`destroy`.
+
+> Son claves de larga duración. El usuario IAM que las emite debería existir solo para
+> esto, y conviene borrarlas al acabar el taller. La alternativa sin claves es OIDC, pero
+> exige crear antes un rol de confianza en la cuenta —un paso previo que para un taller no
+> compensa.
 
 ### El paso que no se puede automatizar
 

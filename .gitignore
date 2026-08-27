@@ -63,6 +63,10 @@ dist/*.whl
 tfplan
 *.tfplan
 
+# Lo escribe el workflow de despliegue en tiempo de ejecucion. En local el state
+# es un fichero, asi que este backend no debe acabar versionado.
+backend.tf
+
 # Lock transitorio de terraform
 *.tfstate.lock.info
 .terraform.tfstate.lock.info
