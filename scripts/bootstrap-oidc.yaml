@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >-
+  Dia 0 del taller: lo que tiene que existir ANTES de que GitHub Actions pueda
+  desplegar nada. Crea el proveedor OIDC de GitHub, el rol que asumen los
+  workflows, y el bucket + tabla para el state remoto de Terraform.
+  Se lanza UNA vez por cuenta, a mano.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Repositorio autorizado }
+        Parameters: [GitHubOrg, GitHubRepo, GitHubBranch]
+      - Label: { default: State remoto }
+        Parameters: [StateBucketName]
+    ParameterLabels:
+      GitHubOrg:       { default: Organizacion o usuario de GitHub }
+      GitHubRepo:      { default: Nombre del repositorio }
+      GitHubBranch:    { default: Rama autorizada }
+      StateBucketName: { default: Bucket para el state (vacio = generado) }
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: 'Duena del repositorio. Ejemplo: 8infinitecloud'
+    MinLength: 1
+
+  GitHubRepo:
+    Type: String
+    Description: Nombre del repositorio, sin la organizacion.
+    Default: devops-infraestructure-as-product
+    MinLength: 1
+
+  GitHubBranch:
+    Type: String
+    Description: >-
+      Unica rama desde la que se puede asumir el rol. Es EL control de acceso de
+      verdad: un workflow en cualquier otra rama no obtiene credenciales.
+    Default: main
+    MinLength: 1
+
+  StateBucketName:
+    Type: String
+    Description: >-
+      Nombre del bucket del state. Vacio => se genera uno con la cuenta y la
+      region. Los nombres de bucket son globales en todo AWS.
+    Default: ''
+
+Conditions:
+  GenerarNombreBucket: !Equals [!Ref StateBucketName, '']
+
+Resources:
+
+  # --- Confianza con GitHub --------------------------------------------------
+  # Sustituye a una clave de acceso de larga duracion: GitHub presenta un token
+  # firmado y AWS lo cambia por credenciales temporales.
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # AWS ya no valida esta huella para GitHub —confia en la CA publica— pero
+      # CloudFormation sigue exigiendo el campo.
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  # --- Rol que asumen los workflows -----------------------------------------
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'aurex-github-actions-${GitHubRepo}'
+      Description: !Sub 'Despliega el taller desde ${GitHubOrg}/${GitHubRepo} en la rama ${GitHubBranch}'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                # Sin esto, CUALQUIER repositorio de GitHub podria asumir el rol.
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/${GitHubBranch}'
+      ManagedPolicyArns:
+        # HONESTIDAD SOBRE ESTO: el taller crea roles y politicas IAM, Lambdas,
+        # Step Functions, CodeBuild, CodePipeline y productos de Service Catalog.
+        # Acotarlo por servicio daria una lista tan larga que dejaria de ser
+        # auditable, y aun asi necesitaria iam:* para el Launch Role.
+        #
+        # El control real aqui es la condicion `sub` de arriba: solo ESE
+        # repositorio y solo ESA rama. Para una cuenta que no sea de taller,
+        # sustituye esto por una politica acotada a tus recursos.
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Tags:
+        - { Key: Proyecto, Value: aurex-infrastructure-as-a-product }
+
+  # --- State remoto ----------------------------------------------------------
+  # El runner de Actions es efimero: sin esto, cada ejecucion empezaria sin
+  # saber que hay desplegado y volveria a crearlo todo.
+  StateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If
+        - GenerarNombreBucket
+        - !Sub 'aurex-tfstate-${AWS::AccountId}-${AWS::Region}'
+        - !Ref StateBucketName
+      VersioningConfiguration:
+        # Un state corrupto se recupera de la version anterior. No es opcional.
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  StateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StateBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureCommunications
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt StateBucket.Arn
+              - !Sub '${StateBucket.Arn}/*'
+            Condition:
+              Bool: { 'aws:SecureTransport': 'false' }
+
+  # Terraform 1.5 todavia bloquea con DynamoDB; el bloqueo nativo en S3 llego
+  # en la 1.10. Como la version esta fijada a la de la pipeline, hace falta.
+  StateLockTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'aurex-tfstate-lock-${AWS::Region}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: LockID, AttributeType: S }
+      KeySchema:
+        - { AttributeName: LockID, KeyType: HASH }
+
+Outputs:
+  RoleArn:
+    Description: Ponlo en el repositorio como variable AWS_DEPLOY_ROLE_ARN
+    Value: !GetAtt GitHubActionsRole.Arn
+
+  StateBucket:
+    Description: Ponlo en el repositorio como variable TF_STATE_BUCKET
+    Value: !Ref StateBucket
+
+  StateLockTable:
+    Description: Ponlo en el repositorio como variable TF_STATE_LOCK_TABLE
+    Value: !Ref StateLockTable
+
+  ComandosGh:
+    Description: Configura las tres variables de golpe con la CLI de GitHub
+    Value: !Sub >-
+      gh variable set AWS_DEPLOY_ROLE_ARN --body ${GitHubActionsRole.Arn}
+      && gh variable set TF_STATE_BUCKET --body ${StateBucket}
+      && gh variable set TF_STATE_LOCK_TABLE --body ${StateLockTable}
+      && gh variable set AWS_REGION --body ${AWS::Region}

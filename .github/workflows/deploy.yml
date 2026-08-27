@@ -1,0 +1,176 @@
+# Despliega el taller en una cuenta de AWS, sin claves de larga duracion.
+#
+# Se lanza a mano desde la pestana Actions. Antes de la primera vez hay que
+# hacer el dia 0: ver scripts/bootstrap-oidc.yaml y el README.
+#
+# Este workflow es la version en CI de scripts/bootstrap.sh y hace los mismos
+# pasos en el mismo orden. La diferencia importante es el STATE: el runner es
+# efimero, asi que aqui se guarda en S3. El backend se escribe en tiempo de
+# ejecucion porque Terraform no admite backends condicionales, y declarar uno
+# fijo obligaria a los asistentes —que van con state local— a configurarlo.
+
+name: Desplegar en AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      hands_on:
+        description: Que motor desplegar
+        type: choice
+        required: true
+        default: '01'
+        options: ['01', '02']
+      accion:
+        description: Que hacer
+        type: choice
+        required: true
+        default: plan
+        options: [plan, apply, destroy]
+      confirmacion:
+        description: 'Para DESTROY: escribe DESTRUIR (y termina antes los productos aprovisionados)'
+        type: string
+        required: false
+        default: ''
+
+concurrency:
+  # Dos applies a la vez sobre el mismo state es la forma mas rapida de
+  # corromperlo. El bloqueo de DynamoDB lo evitaria, pero fallando; mejor
+  # encolar aqui.
+  group: deploy-${{ inputs.hands_on }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # imprescindible para OIDC
+
+jobs:
+  desplegar:
+    name: ${{ inputs.accion }} — hands-on ${{ inputs.hands_on }}
+    runs-on: ubuntu-latest
+    env:
+      TF_VERSION: '1.5.7'
+      DIR: ${{ inputs.hands_on == '01' && 'hands-on/01-terraform-os' || 'hands-on/02-hcp-terraform' }}
+      BUILD_DIR: ${{ inputs.hands_on == '01' && 'modules/terraform-os-engine/lambda-functions' || 'modules/hcp-terraform-engine/engine/lambda-functions' }}
+
+    steps:
+      - name: Comprobar la confirmacion del destroy
+        if: inputs.accion == 'destroy' && inputs.confirmacion != 'DESTRUIR'
+        run: |
+          echo "::error::Para destruir hay que escribir DESTRUIR en el campo de confirmacion."
+          echo "::error::Y ANTES hay que terminar los productos aprovisionados desde Service Catalog:"
+          echo "::error::  si se destruye el motor primero, no queda nada capaz de ejecutar su destroy."
+          exit 1
+
+      - name: Comprobar que el dia 0 esta hecho
+        run: |
+          falta=""
+          [ -n "${{ vars.AWS_DEPLOY_ROLE_ARN }}" ] || falta="${falta} AWS_DEPLOY_ROLE_ARN"
+          [ -n "${{ vars.TF_STATE_BUCKET }}" ]     || falta="${falta} TF_STATE_BUCKET"
+          [ -n "${{ vars.AWS_REGION }}" ]          || falta="${falta} AWS_REGION"
+          if [ -n "${falta}" ]; then
+            echo "::error::Faltan variables del repositorio:${falta}"
+            echo "::error::Lanza scripts/bootstrap-oidc.yaml en tu cuenta y copia sus outputs. Ver el README."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Credenciales temporales via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: taller-${{ inputs.hands_on }}-${{ github.run_id }}
+
+      - name: Quien soy en AWS
+        run: aws sts get-caller-identity
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ inputs.hands_on == '01' && 'modules/terraform-os-engine/lambda-functions/terraform_open_source_parameter_parser/go.mod' || 'modules/hcp-terraform-engine/engine/lambda-functions/go.mod' }}
+
+      - uses: actions/setup-python@v5
+        if: inputs.hands_on == '01'
+        with:
+          python-version: '3.12'
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      # Terraform no compila nada: archive_file lee los artefactos en tiempo de
+      # plan. Sin esto, el plan falla con la precondicion del modulo.
+      - name: Empaquetar las Lambdas
+        if: inputs.accion != 'destroy'
+        run: make bin
+        working-directory: ${{ env.BUILD_DIR }}
+
+      - name: Verificar la arquitectura del binario Go
+        if: inputs.accion != 'destroy' && inputs.hands_on == '01'
+        run: make verify
+        working-directory: ${{ env.BUILD_DIR }}
+
+      - name: Configurar el state remoto
+        run: |
+          set -euo pipefail
+          cat > backend.tf <<EOF
+          # Generado por el workflow. No se versiona: en local el state es un
+          # fichero, y declarar aqui un backend fijo obligaria a todo el mundo a
+          # configurarlo.
+          terraform {
+            backend "s3" {}
+          }
+          EOF
+        working-directory: ${{ env.DIR }}
+
+      - name: terraform init
+        run: |
+          terraform init -input=false -no-color \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=aurex/hands-on-${{ inputs.hands_on }}/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            ${{ vars.TF_STATE_LOCK_TABLE && format('-backend-config="dynamodb_table={0}"', vars.TF_STATE_LOCK_TABLE) || '' }} \
+            -backend-config="encrypt=true"
+        working-directory: ${{ env.DIR }}
+
+      - name: terraform ${{ inputs.accion }}
+        env:
+          # Sin fichero de variables: la configuracion viaja por entorno.
+          TF_VAR_github_repository_id: ${{ github.repository }}
+          TF_VAR_github_branch: ${{ github.ref_name }}
+          TF_VAR_region: ${{ vars.AWS_REGION }}
+          TF_VAR_tfc_organization: ${{ vars.TFC_ORGANIZATION }}
+          TF_VAR_existing_connection_arn: ${{ vars.CODECONNECTIONS_ARN }}
+          TF_VAR_infracost_api_key_secret_arn: ${{ vars.INFRACOST_SECRET_ARN }}
+          TFE_TOKEN: ${{ secrets.TFE_TOKEN }}
+        run: |
+          set -euo pipefail
+          case "${{ inputs.accion }}" in
+            plan)    terraform plan    -input=false -no-color ;;
+            apply)   terraform apply   -input=false -no-color -auto-approve ;;
+            destroy) terraform destroy -input=false -no-color -auto-approve ;;
+          esac
+        working-directory: ${{ env.DIR }}
+
+      - name: Resumen
+        if: success() && inputs.accion == 'apply'
+        run: |
+          set -uo pipefail
+          {
+            echo "## Hands-on ${{ inputs.hands_on }} desplegado"
+            echo
+            echo '```'
+            terraform output -no-color 2>/dev/null || echo "(sin outputs)"
+            echo '```'
+            if [ "$(terraform output -raw connection_needs_authorization 2>/dev/null || echo false)" = "true" ]; then
+              echo
+              echo "### Falta un paso manual"
+              echo
+              echo "La conexion a GitHub nace en estado \`PENDING\`: el handshake OAuth no tiene API."
+              echo "Hasta que se autorice, la pipeline no puede leer del repositorio."
+              echo
+              echo "Consola -> CodePipeline -> Settings -> Connections -> *Update pending connection*"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+        working-directory: ${{ env.DIR }}

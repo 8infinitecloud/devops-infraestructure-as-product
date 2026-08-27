@@ -148,6 +148,81 @@ cd ../../../../hands-on/02-hcp-terraform && terraform init && terraform apply
 
 Requiere `TFE_TOKEN` en el entorno.
 
+## Desplegar sin pelearse con el portátil
+
+`make bin` + `terraform apply` a mano funciona, pero exige tener Go, Python, rsync y
+Terraform en la máquina, y compilar el binario **a x86-64 Linux**. En una sala con
+portátiles distintos, eso falla. Hay dos caminos preparados.
+
+### Camino 1 — AWS CloudShell (para quien asista)
+
+CloudShell ya lleva las credenciales de tu cuenta: no hay claves que configurar, ni OIDC,
+ni fork. Abre CloudShell en la consola de AWS y pega:
+
+```bash
+git clone https://github.com/8infinitecloud/devops-infraestructure-as-product.git
+cd devops-infraestructure-as-product
+./scripts/bootstrap.sh 01
+```
+
+El script comprueba las herramientas e instala las que falten en `~/.local/bin`, verifica
+que hay credenciales, empaqueta las Lambdas, **comprueba la arquitectura del binario Go**
+y hace el apply.
+
+> No hay un `curl … | bash` a propósito. Este repo predica en `buildspec/inspect.yml` que
+> una pipeline que audita seguridad no debería ejecutar scripts descargados de una rama
+> móvil. Sería incoherente pedirlo aquí.
+
+```bash
+./scripts/bootstrap.sh 01 plan      # solo ver qué haría
+./scripts/bootstrap.sh 02           # el otro motor (requiere TFE_TOKEN)
+./scripts/bootstrap.sh 01 destroy   # desmontar, con confirmación
+```
+
+La primera vez el script crea `terraform.tfvars` desde el ejemplo y te para para que lo
+rellenes.
+
+### Camino 2 — GitHub Actions con OIDC (sin claves)
+
+Despliega desde la pestaña **Actions**, con credenciales temporales. Hay un día 0 que se
+hace **una vez por cuenta**:
+
+**1. Lanza la plantilla de bootstrap.** Crea el proveedor OIDC, el rol y el state remoto:
+
+```bash
+aws cloudformation deploy   --template-file scripts/bootstrap-oidc.yaml   --stack-name aurex-taller-bootstrap   --capabilities CAPABILITY_NAMED_IAM   --parameter-overrides GitHubOrg=TU-ORG GitHubRepo=TU-REPO
+```
+
+**2. Copia sus outputs a variables del repositorio.** La plantilla te da el comando hecho:
+
+```bash
+aws cloudformation describe-stacks --stack-name aurex-taller-bootstrap   --query 'Stacks[0].Outputs[?OutputKey==`ComandosGh`].OutputValue' --output text
+```
+
+**3. Actions → «Desplegar en AWS» → Run workflow.** Eliges motor y acción.
+
+| Qué controla el acceso | Cómo |
+|---|---|
+| Quién puede asumir el rol | La condición `sub` del trust policy: **solo ese repo y esa rama**. Otra rama no obtiene credenciales |
+| Duración de las credenciales | Temporales, una hora. No hay ninguna clave guardada en GitHub |
+| Destruir por accidente | Hay que escribir `DESTRUIR` en el formulario |
+
+> El rol lleva `AdministratorAccess`. El taller crea roles y políticas IAM, así que
+> acotarlo por servicio daría una lista tan larga que dejaría de ser auditable, y aun así
+> necesitaría `iam:*`. **El control real es la condición `sub`.** Para una cuenta que no
+> sea de taller, sustitúyelo por una política acotada.
+
+### El paso que no se puede automatizar
+
+**La autorización de CodeConnections.** Terraform crea la conexión en estado `PENDING` y
+el handshake OAuth con GitHub no tiene API: hay que completarlo a mano en la consola, una
+única vez.
+
+> Consola → CodePipeline → Settings → Connections → *Update pending connection*
+
+Los dos caminos te avisan al terminar si queda pendiente. Por eso `existing_connection_arn`
+existe: una vez autorizada, se reutiliza y ya no vuelve a aparecer el paso manual.
+
 ## Limpieza
 
 Siempre en orden inverso, y **terminando antes los productos aprovisionados** — si se
