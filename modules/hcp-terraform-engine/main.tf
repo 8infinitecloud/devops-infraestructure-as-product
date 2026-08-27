@@ -22,11 +22,11 @@ terraform {
     }
     random = {
       source  = "hashicorp/random"
-      version = "3.5.1"
+      version = "3.9.0"
     }
     tfe = {
       source  = "hashicorp/tfe"
-      version = "0.45.0"
+      version = "0.80.0"
     }
   }
 }

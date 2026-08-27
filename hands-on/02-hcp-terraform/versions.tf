@@ -8,7 +8,7 @@ terraform {
       #   - >= 5.55 porque catalog-pipeline usa aws_codeconnections_connection
       #   - <  6.0  porque el motor vendorizado se escribio contra 5.12 y no
       #             esta validado contra el major 6
-      version = ">= 5.55, < 6.0"
+      version = ">= 5.55, < 6.62"
     }
     random = {
       source  = "hashicorp/random"

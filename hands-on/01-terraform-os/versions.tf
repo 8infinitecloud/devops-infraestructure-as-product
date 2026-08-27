@@ -6,7 +6,7 @@ terraform {
       source = "hashicorp/aws"
       # >= 5.55 por aws_codeconnections_connection. Se acota al major 5 para que
       # los dos hands-on usen la misma familia de provider.
-      version = ">= 5.55, < 6.0"
+      version = ">= 5.55, < 6.62"
     }
     archive = {
       source  = "hashicorp/archive"
