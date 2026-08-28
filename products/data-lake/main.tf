@@ -31,6 +31,7 @@ terraform {
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
+data "aws_partition" "current" {}
 
 locals {
   prefijo = "${var.environment_name}-datalake"
@@ -116,6 +117,39 @@ resource "aws_s3_bucket_versioning" "this" {
   versioning_configuration {
     status = "Enabled"
   }
+}
+
+# Sin esto, los objetos se pueden pedir por HTTP en claro. Lo exige CIS —y el
+# sentido comun para un lake con datos de negocio—, y es la misma politica que
+# llevan los buckets de la propia plataforma en el Hands-on 1.
+data "aws_iam_policy_document" "solo_tls" {
+  for_each = local.buckets
+
+  statement {
+    sid     = "DenyInsecureCommunications"
+    effect  = "Deny"
+    actions = ["s3:*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+    resources = [
+      "arn:${data.aws_partition.current.partition}:s3:::${each.value}",
+      "arn:${data.aws_partition.current.partition}:s3:::${each.value}/*",
+    ]
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "solo_tls" {
+  for_each = local.buckets
+
+  bucket = each.value
+  policy = data.aws_iam_policy_document.solo_tls[each.key].json
 }
 
 # Solo la zona RAW caduca: es la que crece sin control. CURATED es el resultado
@@ -275,6 +309,13 @@ check "ningun_bucket_es_publico" {
       b.block_public_acls && b.block_public_policy && b.ignore_public_acls && b.restrict_public_buckets
     ])
     error_message = "Algun bucket del data lake perdio el bloqueo de acceso publico. Revisa si se toco desde la consola."
+  }
+}
+
+check "solo_se_habla_por_tls" {
+  assert {
+    condition     = length(aws_s3_bucket_policy.solo_tls) == length(local.buckets)
+    error_message = "Algun bucket del data lake se quedo sin la politica que obliga a HTTPS."
   }
 }
 
