@@ -8,11 +8,11 @@ output "workspace_demo" {
   value       = { for k, w in tfe_workspace.demo : k => w.name }
 }
 
-output "run_task_infracost" {
-  description = "Estado del run task de Infracost"
-  value = var.infracost_run_task_url != "" ? format(
-    "configurado, %s, en post_plan", var.infracost_enforcement
-  ) : "no configurado (falta infracost_run_task_url)"
+output "run_tasks" {
+  description = "Run tasks configurados, con su nivel de exigencia y etapa"
+  value = length(var.run_tasks) == 0 ? { "(ninguno)" = "define var.run_tasks para enchufar Infracost, Snyk u otro" } : {
+    for k, t in var.run_tasks : k => "${t.enforcement_level} en ${join(", ", t.stages)}"
+  }
 }
 
 output "siguiente_paso" {

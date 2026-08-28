@@ -24,33 +24,36 @@ resource "tfe_project" "catalogo" {
   description  = "Workspaces creados desde el catalogo de productos de Aurex"
 }
 
-# --- Analisis de coste ------------------------------------------------------
+# --- Run tasks --------------------------------------------------------------
 #
-# El equivalente al Infracost que el hands-on 1 mete a mano en el buildspec del
-# runner. La diferencia: alli hay que instalarlo, fijarle la version y programar
-# la puerta; aqui es una integracion que ya existe.
+# El equivalente a lo que el hands-on 1 mete a mano en los buildspecs: alli hay
+# que instalar cada herramienta, fijarle la version y programar la puerta; aqui
+# son integraciones que ya existen y basta con enchufarlas.
 
-resource "tfe_organization_run_task" "infracost" {
-  count = var.infracost_run_task_url != "" ? 1 : 0
+resource "tfe_organization_run_task" "this" {
+  for_each = var.run_tasks
 
   organization = data.tfe_organization.this.name
-  name         = "infracost"
-  url          = var.infracost_run_task_url
-  hmac_key     = var.infracost_hmac_key
+  name         = each.key
+  url          = each.value.url
+  hmac_key     = lookup(var.run_task_hmac_keys, each.key, null)
+  description  = each.value.description
   enabled      = true
-  description  = "Estimacion de coste sobre el plan, antes de aplicar"
 }
 
-resource "tfe_workspace_run_task" "infracost" {
-  for_each = var.infracost_run_task_url != "" ? tfe_workspace.demo : {}
+# Los workspaces del no-code los crea HCP al aprovisionar y no se pueden
+# preconfigurar desde aqui, asi que la asociacion se hace sobre los workspaces
+# que este fichero SI gestiona.
+resource "tfe_workspace_run_task" "this" {
+  for_each = {
+    for par in setproduct(keys(var.run_tasks), keys(tfe_workspace.demo)) :
+    "${par[0]}/${par[1]}" => { tarea = par[0], workspace = par[1] }
+  }
 
-  workspace_id      = each.value.id
-  task_id           = tfe_organization_run_task.infracost[0].id
-  enforcement_level = var.infracost_enforcement
-
-  # post_plan es la unica etapa con el plan completo disponible. En pre_plan
-  # solo hay configuracion, y sin plan no se puede estimar nada.
-  stages = ["post_plan"]
+  workspace_id      = tfe_workspace.demo[each.value.workspace].id
+  task_id           = tfe_organization_run_task.this[each.value.tarea].id
+  enforcement_level = var.run_tasks[each.value.tarea].enforcement_level
+  stages            = var.run_tasks[each.value.tarea].stages
 }
 
 # --- Workspace de demostracion ----------------------------------------------
