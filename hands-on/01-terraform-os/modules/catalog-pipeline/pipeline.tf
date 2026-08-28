@@ -5,6 +5,7 @@ locals {
   trigger_paths = length(var.trigger_file_paths) > 0 ? var.trigger_file_paths : concat(
     [for p in var.productos : "${p.ruta}/**"],
     ["${var.policy_source_path}/**"],
+    var.trigger_extra_paths,
   )
 
   # El catalogo viaja a los buildspecs como JSON en una variable de entorno.

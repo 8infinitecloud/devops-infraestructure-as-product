@@ -251,6 +251,22 @@ terraform -chdir=hands-on/01-terraform-os apply
 
 No hace falta volver a compilar: no cambió ninguna Lambda.
 
+Ahora **haz commit y push**. El fichero que acabas de tocar está en las rutas que disparan
+la pipeline, así que se publica sola:
+
+```bash
+git commit -am "Anade el producto Data Lake al catalogo" && git push
+```
+
+Si prefieres no depender del push, arráncala a mano:
+
+```bash
+aws codepipeline start-pipeline-execution --name aurex-os-catalog-pipeline
+```
+
+La pipeline recorre **los dos productos**: valida y empaqueta cada uno, los inspecciona, y
+tras tu aprobación publica una versión nueva de ambos.
+
 **Cero recursos nuevos.** Solo cambia una variable de entorno en CodeBuild — 107 recursos con
 un producto y 107 con dos.
 

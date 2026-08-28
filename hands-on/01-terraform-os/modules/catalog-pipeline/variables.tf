@@ -107,6 +107,23 @@ variable "trigger_file_paths" {
   default     = []
 }
 
+variable "trigger_extra_paths" {
+  type        = list(string)
+  description = <<-EOT
+    Rutas ADICIONALES que disparan la pipeline, ademas de las que se derivan del
+    catalogo.
+
+    El caso tipico es el fichero donde vive el mapa `productos`: anadir un
+    producto es un cambio del catalogo y deberia publicarlo, pero ese fichero no
+    esta bajo products/ y sin esto el push no dispararia nada.
+
+    Cuidado con lo que se mete aqui: si el fichero contiene ademas otra
+    configuracion —limites de coste, version de Terraform— cualquier retoque
+    republicaria todos los productos sin que haya cambiado ninguno.
+  EOT
+  default     = []
+}
+
 variable "log_retention_days" {
   type        = number
   default     = 30
