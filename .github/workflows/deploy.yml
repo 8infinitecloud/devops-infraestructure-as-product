@@ -23,26 +23,15 @@
 #
 # RESTO DE CONFIGURACION (Settings -> Secrets and variables -> Actions):
 #
-#   Secrets   TFE_TOKEN               solo para el hands-on 02
-#
 #   Variables AWS_REGION              opcional, por defecto us-east-1
 #             TF_STATE_BUCKET         opcional, se deriva de la cuenta si falta
 #             CODECONNECTIONS_ARN     opcional, una conexion ya autorizada
-#             TFC_ORGANIZATION        solo para el hands-on 02
 
 name: Desplegar en AWS
 
 on:
   workflow_dispatch:
     inputs:
-      hands_on:
-        description: Que motor desplegar
-        type: choice
-        required: true
-        default: '01'
-        options:
-          - '01'
-          - '02'
       accion:
         description: Que hacer
         type: choice
@@ -58,7 +47,7 @@ on:
 concurrency:
   # Dos applies a la vez sobre el mismo state es la forma mas rapida de
   # corromperlo. El bloqueo de DynamoDB lo evitaria, pero fallando: mejor encolar.
-  group: deploy-${{ inputs.hands_on }}
+  group: deploy
   cancel-in-progress: false
 
 permissions:
@@ -67,7 +56,7 @@ permissions:
 
 jobs:
   desplegar:
-    name: ${{ inputs.accion }} — hands-on ${{ inputs.hands_on }}
+    name: ${{ inputs.accion }} — hands-on 01
     runs-on: ubuntu-latest
 
     env:
@@ -75,8 +64,8 @@ jobs:
       # escrito por una version mas nueva ya no lo puede abrir una mas vieja.
       TF_VERSION: '1.5.7'
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-      DIR: ${{ inputs.hands_on == '01' && 'hands-on/01-terraform-os' || 'hands-on/02-hcp-terraform' }}
-      BUILD_DIR: ${{ inputs.hands_on == '01' && 'hands-on/01-terraform-os/modules/engine/lambda-functions' || 'hands-on/02-hcp-terraform/modules/engine/engine/lambda-functions' }}
+      DIR: hands-on/01-terraform-os
+      BUILD_DIR: hands-on/01-terraform-os/modules/engine/lambda-functions
 
     steps:
       # --- Guardas, antes de tocar nada -------------------------------------
@@ -97,7 +86,6 @@ jobs:
           ROL: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           KEY_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          TFE: ${{ secrets.TFE_TOKEN }}
         run: |
           set -euo pipefail
           if [ -n "${ROL}" ]; then
@@ -111,9 +99,7 @@ jobs:
             echo "::error::Settings -> Secrets and variables -> Actions"
             exit 1
           fi
-          if [ "${{ inputs.hands_on }}" = "02" ] && [ -z "${TFE}" ]; then
-            echo "::error::El hands-on 02 necesita el secret TFE_TOKEN."
-            exit 1
+          if [ "01" = "02" ] && [ -z "${TFE}" ]; then
           fi
 
       - uses: actions/checkout@v4
@@ -124,7 +110,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          role-session-name: taller-${{ inputs.hands_on }}-${{ github.run_id }}
+          role-session-name: taller-01-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Credenciales con claves
@@ -143,10 +129,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           # La version sale del go.mod de cada motor: son distintas.
-          go-version-file: ${{ inputs.hands_on == '01' && 'hands-on/01-terraform-os/modules/engine/lambda-functions/terraform_open_source_parameter_parser/go.mod' || 'hands-on/02-hcp-terraform/modules/engine/engine/lambda-functions/go.mod' }}
+          go-version-file: hands-on/01-terraform-os/modules/engine/lambda-functions/terraform_open_source_parameter_parser/go.mod
 
       - uses: actions/setup-python@v5
-        if: inputs.hands_on == '01'
         with:
           python-version: '3.12'
 
@@ -165,7 +150,7 @@ jobs:
       # El binario Go declara x86_64 en la Lambda. Si sale ARM, el deploy
       # funciona y la funcion revienta al invocarse.
       - name: Verificar la arquitectura del binario Go
-        if: inputs.accion != 'destroy' && inputs.hands_on == '01'
+        if: inputs.accion != 'destroy'
         run: make verify
         working-directory: ${{ env.BUILD_DIR }}
 
@@ -233,7 +218,7 @@ jobs:
         run: |
           terraform init -input=false -no-color \
             -backend-config="bucket=${{ steps.state.outputs.bucket }}" \
-            -backend-config="key=aurex/hands-on-${{ inputs.hands_on }}/terraform.tfstate" \
+            -backend-config="key=aurex/hands-on-01/terraform.tfstate" \
             -backend-config="region=${AWS_REGION}" \
             -backend-config="dynamodb_table=${{ steps.state.outputs.tabla }}" \
             -backend-config="encrypt=true"
@@ -248,9 +233,7 @@ jobs:
           TF_VAR_github_repository_id: ${{ github.repository }}
           TF_VAR_github_branch: ${{ github.ref_name }}
           TF_VAR_existing_connection_arn: ${{ vars.CODECONNECTIONS_ARN }}
-          TF_VAR_tfc_organization: ${{ vars.TFC_ORGANIZATION }}
           TF_VAR_infracost_api_key_secret_arn: ${{ vars.INFRACOST_SECRET_ARN }}
-          TFE_TOKEN: ${{ secrets.TFE_TOKEN }}
         run: |
           set -euo pipefail
           case "${{ inputs.accion }}" in
@@ -265,7 +248,7 @@ jobs:
         run: |
           set -uo pipefail
           {
-            echo "## Hands-on ${{ inputs.hands_on }} — ${{ job.status }}"
+            echo "## Hands-on 01 — ${{ job.status }}"
             echo
             echo '```'
             terraform output -no-color 2>/dev/null || echo "(sin outputs)"

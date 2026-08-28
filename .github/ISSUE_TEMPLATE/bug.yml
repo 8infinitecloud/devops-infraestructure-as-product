@@ -7,8 +7,7 @@ body:
     attributes:
       label: Donde ocurre
       options:
-        - Hands-on 1 — motor Terraform OS
-        - Hands-on 2 — motor HCP Terraform
+        - Despliegue de la plataforma (motor, catalogo)
         - Pipeline del catalogo (CodePipeline / CodeBuild)
         - Politicas (Conftest / OPA)
         - Modulo standard-environment

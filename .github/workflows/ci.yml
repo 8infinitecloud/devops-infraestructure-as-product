@@ -60,8 +60,6 @@ jobs:
           FAILED=""
           for dir in products/* hands-on/*/modules/* hands-on/*-*; do
             [ -d "$dir" ] || continue
-            # `hcp-terraform-engine/engine` es un submodulo interno; se valida
-            # desde su raiz, que es la que declara los providers.
             ls "$dir"/*.tf >/dev/null 2>&1 || { echo "-- $dir: sin .tf en la raiz, se omite"; continue; }
             echo "== $dir =="
             terraform -chdir="$dir" init -backend=false -input=false -no-color
@@ -104,16 +102,10 @@ jobs:
 
   # --------------------------------------------------------------------------
   test-go:
-    name: Tests Go (${{ matrix.name }})
+    name: Tests Go (parser de parametros)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: motor HCP Terraform
-            dir: hands-on/02-hcp-terraform/modules/engine/engine/lambda-functions
-          - name: parser Terraform OS
-            dir: hands-on/01-terraform-os/modules/engine/lambda-functions/terraform_open_source_parameter_parser
+    env:
+      DIR: hands-on/01-terraform-os/modules/engine/lambda-functions/terraform_open_source_parameter_parser
     steps:
       - uses: actions/checkout@v4
 
@@ -121,8 +113,8 @@ jobs:
         with:
           # La version sale del go.mod de cada modulo: son distintas y no deben
           # fijarse aqui.
-          go-version-file: ${{ matrix.dir }}/go.mod
-          cache-dependency-path: ${{ matrix.dir }}/go.sum
+          go-version-file: ${{ env.DIR }}/go.mod
+          cache-dependency-path: ${{ env.DIR }}/go.sum
 
       # INFORMATIVO, no bloqueante. Los dos modulos son codigo vendorizado de
       # AWS y de HashiCorp, y arrastran hallazgos suyos (`unreachable code`,
@@ -132,11 +124,11 @@ jobs:
       # escriba de nuevo aqui.
       - name: go vet (informativo)
         continue-on-error: true
-        working-directory: ${{ matrix.dir }}
+        working-directory: ${{ env.DIR }}
         run: go vet ./...
 
       - name: go test
-        working-directory: ${{ matrix.dir }}
+        working-directory: ${{ env.DIR }}
         run: go test -race ./...
 
   # --------------------------------------------------------------------------
