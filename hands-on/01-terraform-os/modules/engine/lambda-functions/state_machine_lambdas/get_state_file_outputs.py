@@ -17,6 +17,7 @@ state_bucket_name = None
 
 # Input and output keys
 PROVISIONED_PRODUCT_ID_KEY = 'provisionedProductId'
+PROVISIONED_PRODUCT_NAME_KEY = 'provisionedProductName'
 AWS_ACCOUNT_ID_KEY = "awsAccountId"
 RECORD_OUTPUTS_KEY = 'recordOutputs'
 RECORD_OUTPUT_KEY_KEY = 'key'
@@ -155,7 +156,14 @@ def parse(event, context) -> dict:
         if not s3_resource_client:
             s3_resource_client = boto3.resource('s3', config=app_config.get_boto_config())
 
-        state_file_json_key = f'{event[AWS_ACCOUNT_ID_KEY]}/{event[PROVISIONED_PRODUCT_ID_KEY]}'
+        # MISMA clave que escribe el runner en PP_DESCRIPTOR, definido en las state
+        # machines. Si las dos se separan, esto busca un fichero que no existe y S3
+        # responde 403 en vez de 404 —porque sin ListBucket no distingue "no esta"
+        # de "no puedes verlo"—, que despista muchisimo.
+        state_file_json_key = (
+            f'{event[AWS_ACCOUNT_ID_KEY]}/'
+            f'{event[PROVISIONED_PRODUCT_NAME_KEY]}-{event[PROVISIONED_PRODUCT_ID_KEY]}'
+        )
         state_file_content = __fetch_state_file_from_s3(state_bucket_name, state_file_json_key)
         record_outputs = __parse_outputs_from_state_file(state_file_content)
 

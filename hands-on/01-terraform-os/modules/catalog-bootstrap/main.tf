@@ -171,6 +171,26 @@ data "aws_iam_policy_document" "launch_role_permissions" {
   # es el trabajo que mas se olvida: el fallo no aparece al publicar sino al
   # APROVISIONAR, con el usuario final delante del asistente.
 
+  # Adjuntar politicas GESTIONADAS al rol que crea el producto. Va con condicion
+  # sobre iam:PolicyARN a proposito: sin ella, un producto podria adjuntarse
+  # AdministratorAccess al rol que el mismo crea, y el Launch Role existe
+  # precisamente para impedir esa escalada.
+  #
+  # Cada producto que necesite otra politica gestionada la anade a esta lista.
+  statement {
+    sid       = "AdjuntarPoliticasGestionadasPermitidas"
+    effect    = "Allow"
+    actions   = ["iam:AttachRolePolicy", "iam:DetachRolePolicy"]
+    resources = ["arn:${local.partition}:iam::${local.account_id}:role/*-environment-access"]
+    condition {
+      test     = "ArnEquals"
+      variable = "iam:PolicyARN"
+      values = [
+        "arn:${local.partition}:iam::aws:policy/service-role/AWSGlueServiceRole",
+      ]
+    }
+  }
+
   statement {
     sid    = "CatalogoGlue"
     effect = "Allow"

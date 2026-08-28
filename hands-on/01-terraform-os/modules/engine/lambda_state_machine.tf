@@ -27,9 +27,16 @@ resource "aws_iam_role_policy" "get_state_file_outputs_s3" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["s3:GetObject"]
-      Resource = ["${aws_s3_bucket.state.arn}/*"]
+      Effect = "Allow"
+      # ListBucket sobre el bucket ademas de GetObject sobre los objetos: sin el,
+      # pedir una clave que no existe devuelve 403 en vez de 404, porque S3 no
+      # revela si el objeto falta o si no tienes permiso. El diagnostico cambia
+      # por completo.
+      Action = ["s3:GetObject", "s3:ListBucket"]
+      Resource = [
+        aws_s3_bucket.state.arn,
+        "${aws_s3_bucket.state.arn}/*",
+      ]
     }]
   })
 }
