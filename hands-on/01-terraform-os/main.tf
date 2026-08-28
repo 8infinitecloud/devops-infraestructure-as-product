@@ -42,6 +42,20 @@ locals {
       ruta        = "products/standard-environment"
       descripcion = "Red, almacenamiento y rol de acceso estandar."
     }
+
+    # Descomenta estas cinco lineas y aplica: el catalogo pasa a tener dos
+    # productos SIN crear un solo recurso nuevo. El mapa viaja a los proyectos de
+    # CodeBuild como variable de entorno, y la pipeline es una para todos.
+    #
+    # El Launch Role ya trae los permisos de Glue y Athena que este producto
+    # necesita. Sin ellos pasaria validate, pasaria publish, y fallaria al
+    # APROVISIONAR, que es el sitio mas caro para enterarse.
+    #
+    # data-lake = {
+    #   nombre      = "Data Lake"
+    #   ruta        = "products/data-lake"
+    #   descripcion = "S3 por zonas, catalogo de Glue y consultas con Athena."
+    # }
   }
 }
 

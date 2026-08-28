@@ -165,6 +165,52 @@ data "aws_iam_policy_document" "launch_role_permissions" {
     resources = ["*"]
   }
 
+  # --- Permisos del producto data-lake --------------------------------------
+  #
+  # Cada producto que entra al catalogo puede necesitar servicios nuevos aqui, y
+  # es el trabajo que mas se olvida: el fallo no aparece al publicar sino al
+  # APROVISIONAR, con el usuario final delante del asistente.
+
+  statement {
+    sid    = "CatalogoGlue"
+    effect = "Allow"
+    actions = [
+      "glue:CreateDatabase", "glue:DeleteDatabase", "glue:GetDatabase", "glue:GetDatabases",
+      "glue:UpdateDatabase",
+      "glue:CreateCrawler", "glue:DeleteCrawler", "glue:GetCrawler", "glue:GetCrawlers",
+      "glue:UpdateCrawler", "glue:StartCrawler", "glue:StopCrawler",
+      "glue:GetTable", "glue:GetTables", "glue:DeleteTable",
+      "glue:TagResource", "glue:UntagResource", "glue:GetTags",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "WorkgroupAthena"
+    effect = "Allow"
+    actions = [
+      "athena:CreateWorkGroup", "athena:DeleteWorkGroup", "athena:GetWorkGroup",
+      "athena:UpdateWorkGroup", "athena:ListWorkGroups",
+      "athena:TagResource", "athena:UntagResource", "athena:ListTagsForResource",
+    ]
+    resources = ["*"]
+  }
+
+  # El crawler de Glue necesita que le pasen su rol. La condicion no es opcional:
+  # sin ella este permiso dejaria entregar CUALQUIER rol de la cuenta a Glue, y
+  # el recurso ya esta acotado a los que el propio producto puede crear.
+  statement {
+    sid       = "PassRoleSoloAGlue"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = ["arn:${local.partition}:iam::${local.account_id}:role/*-environment-access"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["glue.amazonaws.com"]
+    }
+  }
+
   # El motor descarga el artefacto del producto asumiendo este rol.
   statement {
     sid     = "ReadProvisioningArtifacts"
