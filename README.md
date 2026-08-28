@@ -53,6 +53,10 @@ saber nada de lo primero.
 
 ## Desplegar
 
+> **¿Primera vez?** La [guía paso a paso](docs/paso-a-paso.md) recorre todo el ciclo —desde el
+> fork hasta aprovisionar un entorno y limpiar— con los tiempos y las salidas reales de cada
+> etapa. Unos 25 minutos.
+
 Requiere credenciales de AWS. Todo lo demás lo resuelve el script.
 
 ```bash
