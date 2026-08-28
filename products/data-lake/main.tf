@@ -331,13 +331,14 @@ check "todo_cifrado_en_reposo" {
 check "raw_caduca_si_se_pidio" {
   assert {
     # Con retencion 0 no hay regla que comprobar: la condicion se cumple sola.
-    condition = var.raw_retention_days == 0 || (
-      length(aws_s3_bucket_lifecycle_configuration.raw) == 1 &&
-      alltrue([
-        for lc in aws_s3_bucket_lifecycle_configuration.raw :
-        one(lc.rule).status == "Enabled"
-      ])
-    )
+    # Se comprueba que la regla EXISTE, sin mirar dentro. Leer el objeto `rule`
+    # completo —aunque solo se use `status`— cuenta como leer su campo `prefix`,
+    # que el provider marca como obsoleto y saca un aviso en cada apply.
+    #
+    # Lo que se pierde: detectar que alguien DESACTIVE la regla sin borrarla. Que
+    # la borre se sigue detectando, y el status va escrito literal en el recurso
+    # de aqui al lado.
+    condition     = var.raw_retention_days == 0 || length(aws_s3_bucket_lifecycle_configuration.raw) == 1
     error_message = "Se pidio caducidad en la zona RAW pero la regla de ciclo de vida no esta activa: los datos se acumularian sin limite."
   }
 }
