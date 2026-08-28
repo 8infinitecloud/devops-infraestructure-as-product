@@ -12,12 +12,21 @@ Total: **unos 25 minutos**, de los cuales 10 son esperas.
 **Una cuenta de AWS con permisos de administrador.** El despliegue crea roles y políticas
 IAM, así que un usuario acotado no sirve.
 
-**Un fork del repositorio.** No basta con clonar: la pipeline lee de *tu* repositorio, así
-que necesitas uno donde puedas hacer push.
+**Un fork del repositorio.** No basta con clonar: la pipeline lee de *tu* repositorio a
+través de CodeConnections, así que necesitas uno donde puedas hacer push.
+
+1. Abre https://github.com/8infinitecloud/devops-infraestructure-as-product y pulsa **Fork**
+2. Clona el tuyo:
 
 ```bash
-gh repo fork 8infinitecloud/devops-infraestructure-as-product --clone
+git clone https://github.com/TU-USUARIO/devops-infraestructure-as-product.git
 cd devops-infraestructure-as-product
+```
+
+Comprueba que el remoto apunta a tu fork y no al original:
+
+```bash
+git remote -v
 ```
 
 **Herramientas:** `terraform >= 1.5`, `go`, `python3`, `make`, `rsync`, `git` y la AWS CLI.
