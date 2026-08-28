@@ -251,3 +251,66 @@ resource "aws_athena_workgroup" "this" {
     }
   }
 }
+
+# ---------------------------------------------------------------------------
+# Invariantes del data lake
+#
+# Se evaluan en cada plan y apply, y ademas de forma PERIODICA si el workspace
+# tiene activada la continuous validation de HCP Terraform. Ahi esta su valor:
+# no comprueban que el codigo este bien —de eso van los tests— sino que lo
+# desplegado SIGA cumpliendo semanas despues.
+#
+# Si alguien quita el bloqueo de acceso publico desde la consola, el refresh
+# periodico lo detecta y estas comprobaciones fallan con un mensaje legible, en
+# vez de aparecer como un diff crudo en un plan que nadie mira.
+#
+# Fallan como AVISO, no como error: no bloquean el apply. Es deliberado —
+# avisar de una desviacion no deberia impedir corregirla.
+# ---------------------------------------------------------------------------
+
+check "ningun_bucket_es_publico" {
+  assert {
+    condition = alltrue([
+      for b in aws_s3_bucket_public_access_block.this :
+      b.block_public_acls && b.block_public_policy && b.ignore_public_acls && b.restrict_public_buckets
+    ])
+    error_message = "Algun bucket del data lake perdio el bloqueo de acceso publico. Revisa si se toco desde la consola."
+  }
+}
+
+check "todo_cifrado_en_reposo" {
+  assert {
+    condition = alltrue([
+      for c in aws_s3_bucket_server_side_encryption_configuration.this :
+      length(c.rule) > 0
+    ])
+    error_message = "Algun bucket del data lake se quedo sin cifrado en reposo."
+  }
+}
+
+check "raw_caduca_si_se_pidio" {
+  assert {
+    # Con retencion 0 no hay regla que comprobar: la condicion se cumple sola.
+    condition = var.raw_retention_days == 0 || (
+      length(aws_s3_bucket_lifecycle_configuration.raw) == 1 &&
+      alltrue([
+        for lc in aws_s3_bucket_lifecycle_configuration.raw :
+        one(lc.rule).status == "Enabled"
+      ])
+    )
+    error_message = "Se pidio caducidad en la zona RAW pero la regla de ciclo de vida no esta activa: los datos se acumularian sin limite."
+  }
+}
+
+check "athena_no_puede_sacar_datos_fuera" {
+  assert {
+    # Se recorre la lista en vez de indexar: `||` y `&&` NO cortocircuitan en
+    # Terraform, asi que `aws_athena_workgroup.this[0]` revienta con Athena
+    # desactivada. Sobre una lista vacia, alltrue() devuelve true.
+    condition = alltrue([
+      for w in aws_athena_workgroup.this :
+      w.configuration[0].enforce_workgroup_configuration
+    ])
+    error_message = "El workgroup de Athena dejo de forzar su configuracion: cualquiera podria redirigir los resultados a un bucket propio."
+  }
+}
