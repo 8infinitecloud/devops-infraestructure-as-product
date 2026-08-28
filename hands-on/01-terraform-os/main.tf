@@ -43,11 +43,18 @@ locals {
       descripcion = "Red, almacenamiento y rol de acceso estandar."
     }
 
-    # data-lake = {
-    #   nombre      = "Data Lake"
-    #   ruta        = "products/data-lake"
-    #   descripcion = "S3 por zonas, catalogo de Glue y consultas con Athena."
-    # }
+    # Anadir un producto es esto y nada mas. No crea infraestructura: el mapa
+    # viaja a los proyectos de CodeBuild como variable de entorno, y la pipeline
+    # es UNA para todo el catalogo.
+    #
+    # El Launch Role trae los permisos de Glue y Athena que necesita. Sin ellos
+    # pasaria validate, pasaria publish, y fallaria al APROVISIONAR, con el
+    # usuario delante del asistente.
+    data-lake = {
+      nombre      = "Data Lake"
+      ruta        = "products/data-lake"
+      descripcion = "S3 por zonas, catalogo de Glue y consultas con Athena."
+    }
   }
 }
 
