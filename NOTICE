@@ -1,10 +1,9 @@
-Infrastructure as a Product — Taller Aurex
+Infrastructure as a Product
 Copyright 2025-2026 8infinitecloud
 
-Este producto incluye software desarrollado por terceros. El codigo propio del
-repositorio se distribuye bajo la licencia Apache 2.0 (ver LICENSE). El codigo
-de terceros CONSERVA su licencia original, que es la que manda sobre esos
-ficheros.
+Este producto incluye software desarrollado por terceros. El codigo propio se
+distribuye bajo la licencia Apache 2.0 (ver LICENSE). El codigo de terceros
+CONSERVA su licencia original, que es la que manda sobre esos ficheros.
 
 --------------------------------------------------------------------------------
 hands-on/01-terraform-os/modules/engine/
@@ -13,34 +12,14 @@ Derivado de "AWS Service Catalog Engine for Terraform" (Terraform Reference
 Engine), de Amazon Web Services.
 
     Origen:    https://github.com/aws-samples/service-catalog-engine-for-terraform-os
-    Licencia:  Apache License 2.0  — copia en hands-on/01-terraform-os/modules/engine/LICENSE
+    Licencia:  Apache License 2.0  — copia en el mismo directorio, LICENSE
     Copyright: Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 Modificado respecto al original: la instalacion pasa de AWS SAM / CloudFormation
-a un modulo de Terraform, y se reorganiza el arbol de ficheros. La logica de las
-Lambdas (Python y Go) y las definiciones de las state machines se mantienen.
+a un modulo de Terraform, y se reorganiza el arbol de ficheros. Se elimino la
+mitad correspondiente al tipo de producto TERRAFORM_OPEN_SOURCE, que AWS retiro
+el 2023-12-14 en favor de EXTERNAL. La logica de las Lambdas (Python y Go) y las
+definiciones de las state machines se mantienen.
 
---------------------------------------------------------------------------------
-hands-on/02-hcp-terraform/modules/engine/
---------------------------------------------------------------------------------
-Derivado de "AWS Service Catalog Engine for Terraform Cloud" (TFC-RE), de
-HashiCorp / IBM.
-
-    Origen:    https://github.com/hashicorp/aws-service-catalog-engine-for-tfc
-    Licencia:  Mozilla Public License 2.0 — copia en hands-on/02-hcp-terraform/modules/engine/LICENSE
-    Copyright: Copyright IBM Corp. 2023, 2025
-
-La MPL 2.0 es copyleft POR FICHERO: cualquier modificacion de un fichero
-originario de este motor sigue siendo MPL 2.0, aunque el resto del repositorio
-sea Apache 2.0. Al anadir ficheros nuevos dentro de este directorio, deja claro
-en la cabecera bajo que licencia estan.
-
-Modificado respecto al original: se envuelve como modulo reutilizable de
-Terraform y se integra con el resto del taller. El motor en si (Go, Step
-Functions, rotacion de tokens) se mantiene.
-
---------------------------------------------------------------------------------
-hands-on/01-terraform-os/modules/engine/sample-provisioning-artifacts/
---------------------------------------------------------------------------------
-s3bucket.tar.gz procede del repositorio de AWS citado arriba (Apache 2.0). Se
+sample-provisioning-artifacts/s3bucket.tar.gz procede del mismo repositorio. Se
 versiona porque es el fixture que consumen los tests del parser de parametros.

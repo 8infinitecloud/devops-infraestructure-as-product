@@ -12,8 +12,10 @@ terraform fmt -check -recursive
 terraform -chdir=products/standard-environment init -backend=false
 terraform -chdir=products/standard-environment validate
 
-# 3. Tests de las Lambdas afectadas
-cd hands-on/02-hcp-terraform/modules/engine/engine/lambda-functions && go test ./...
+# 3. Tests
+terraform test    # en products/<producto>/  (requiere Terraform >= 1.7)
+
+# 4. Tests de las Lambdas afectadas
 cd hands-on/01-terraform-os/modules/engine/lambda-functions/terraform_open_source_parameter_parser && go test ./...
 cd hands-on/01-terraform-os/modules/engine/lambda-functions && python -m pytest -q
 ```
@@ -25,31 +27,22 @@ los reportes igualmente.
 
 ## Estructura
 
-Cada hands-on es **autosuficiente**: lleva sus modulos dentro, en
-`hands-on/NN-*/modules/`, aunque se repitan entre demos. Son demos distintas y se
-leen y se copian por separado.
-
-Lo unico compartido es `products/`, y es deliberado: que el MISMO modulo lo sirvan
-los dos motores es lo que el taller demuestra. Si lo duplicas, la demo deja de
-demostrar nada.
+El hands-on lleva sus modulos dentro, en `hands-on/01-terraform-os/modules/`.
+`products/` es lo que la plataforma sirve y se mantiene aparte: un producto no
+sabe como se ejecuta por debajo.
 
 Un modulo no configura providers ni backend: eso vive en el `main.tf` del
 hands-on. Si un cambio te obliga a declarar un `provider` dentro de un modulo,
 casi seguro va en el sitio equivocado.
 
-Ojo con la duplicacion: `catalog-pipeline` y `catalog-shared` existen dos veces.
-Un arreglo en uno casi siempre hay que llevarlo al otro.
 
 ## Codigo de terceros
 
-`hands-on/01-terraform-os/modules/engine/` y `hands-on/02-hcp-terraform/modules/engine/` derivan de los
-motores de AWS y de HashiCorp y conservan sus licencias (ver NOTICE).
+`hands-on/01-terraform-os/modules/engine/` deriva del motor de referencia de AWS
+y conserva su licencia Apache 2.0 (ver NOTICE).
 
 - Toca lo minimo. Un diff pequeno contra el original es lo que permite adoptar
   mejoras de aguas arriba mas adelante.
-- `hands-on/02-hcp-terraform/modules/engine/` es **MPL-2.0**, copyleft por fichero: lo que
-  modifiques ahi sigue siendo MPL-2.0 aunque el resto del repo sea Apache-2.0.
-- Explica en el PR por que el cambio no cabia fuera del codigo vendorizado.
 
 ## Politicas
 

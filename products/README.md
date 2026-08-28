@@ -3,13 +3,12 @@
 Aquí vive **lo que la plataforma sirve**. Cada hands-on lleva su propia plataforma dentro,
 en `hands-on/NN-*/modules/`.
 
-Esta carpeta es **lo único que los dos hands-on comparten**, y no es casualidad: es
-exactamente lo que el taller demuestra.
+Un producto no sabe cómo se ejecuta por debajo: no declara `provider` ni `backend`, y el
+motor se los inyecta al aprovisionar.
 
-Esa separación es el asunto del taller. Un producto no sabe qué motor lo ejecuta por
-debajo: `standard-environment` es exactamente el mismo módulo en el Hands-on 1 (Terraform
-OS, apply en CodeBuild) y en el Hands-on 2 (HCP Terraform, apply en un workspace). No hay
-copia, no hay variante, no hay `if`.
+Un producto **no sabe cómo se ejecuta por debajo**: no declara `provider` ni `backend`, y
+el motor se los inyecta al aprovisionar. El mismo `.tf` vale para cualquier motor que
+respete el contrato — `.tf` en la raíz del artefacto, y las variables como interfaz.
 
 ## Añadir un producto
 
