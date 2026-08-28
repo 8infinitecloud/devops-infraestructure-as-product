@@ -20,11 +20,14 @@ gh repo fork 8infinitecloud/devops-infraestructure-as-product --clone
 cd devops-infraestructure-as-product
 ```
 
-Herramientas: el script instala Terraform y Go si faltan. Solo necesitas `python3`, `git`,
-`make` y la AWS CLI con credenciales.
+**Herramientas:** `terraform >= 1.5`, `go`, `python3`, `make`, `rsync`, `git` y la AWS CLI.
 
-> **En AWS CloudShell no hace falta nada de esto** — las credenciales ya están puestas y el
-> resto lo instala el script. Es el camino más corto.
+```bash
+terraform version && go version && python3 --version && aws sts get-caller-identity
+```
+
+> **En AWS CloudShell** ya tienes credenciales, `python3`, `git` y `make`. Faltan Terraform y
+> Go, que se instalan desde sus tarballs de release en un par de minutos.
 
 ---
 
@@ -54,12 +57,30 @@ El resto tiene valores por defecto razonables.
 
 ## 2 · Desplegar — 4 min
 
+**Primero las Lambdas.** Terraform no compila nada: el `archive_file` lee `build/` en tiempo
+de plan, así que si te saltas este paso el `apply` falla con una precondición.
+
 ```bash
-./scripts/bootstrap.sh
+cd hands-on/01-terraform-os/modules/engine/lambda-functions
+make bin
+make verify
 ```
 
-Empaqueta las Lambdas, **comprueba que el binario Go es x86-64** —un binario ARM se sube sin
-quejarse y falla al invocarse— y aplica.
+`make verify` comprueba que el binario Go quedó en **x86-64**. No es paranoia: en un Mac con
+Apple Silicon, un `GOARCH` mal puesto produce un binario ARM que Terraform sube sin quejarse
+y que revienta al invocarse. El repo original traía ese fallo.
+
+```
+OK: x86-64, coincide con architectures del aws_lambda_function
+```
+
+**Ahora sí:**
+
+```bash
+cd ../../..
+terraform init
+terraform apply
+```
 
 ```
 Apply complete! Resources: 107 added, 0 changed, 0 destroyed.
@@ -67,13 +88,25 @@ Apply complete! Resources: 107 added, 0 changed, 0 destroyed.
 
 Si algo falla aquí suele ser por permisos IAM. El mensaje de AWS dice qué acción falta.
 
+> **En sucesivos `apply` verás las tres Lambdas como modificadas** aunque no hayas tocado
+> código. No es un error: `make bin` regenera los `.zip` y estos incorporan marcas de tiempo,
+> así que el `source_code_hash` cambia. Terraform las vuelve a subir; son unos segundos.
+> Si no cambiaste ninguna Lambda, puedes saltarte `make bin` y aplicar directamente.
+
 ---
 
 ## 3 · Autorizar la conexión a GitHub — 1 min, y es manual
 
 **Este paso no se puede automatizar.** El handshake OAuth no tiene API.
 
-El script te avisa al terminar si queda pendiente. Si es así:
+Comprueba si te hace falta:
+
+```bash
+aws codeconnections list-connections \
+  --query 'Connections[].{nombre:ConnectionName,estado:ConnectionStatus}' --output table
+```
+
+Si sale `PENDING`:
 
 > Consola → CodePipeline → **Settings → Connections** → selecciona la pendiente →
 > *Update pending connection* → autoriza la app **AWS Connector for GitHub**
@@ -209,8 +242,10 @@ data-lake = {
 ```
 
 ```bash
-./scripts/bootstrap.sh
+terraform -chdir=hands-on/01-terraform-os apply
 ```
+
+No hace falta volver a compilar: no cambió ninguna Lambda.
 
 **Cero recursos nuevos.** Solo cambia una variable de entorno en CodeBuild — 107 recursos con
 un producto y 107 con dos.
@@ -236,7 +271,7 @@ aws servicecatalog disassociate-product-from-portfolio --product-id <prod-...> -
 aws servicecatalog delete-product --id <prod-...>
 
 # 3. Ahora sí
-./scripts/bootstrap.sh destroy
+terraform -chdir=hands-on/01-terraform-os destroy
 ```
 
 Queda fuera del `destroy`: el secreto de Infracost si lo creaste, y la conexión de

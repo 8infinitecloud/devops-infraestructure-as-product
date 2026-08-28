@@ -44,7 +44,7 @@ products/                     LO QUE LA PLATAFORMA SIRVE
   data-lake/                  S3 por zonas, catálogo de Glue y Athena
 
 policies/                     políticas de organización que evalúa la pipeline
-scripts/bootstrap.sh          despliegue en un comando
+docs/paso-a-paso.md           el ciclo completo, de clonar a limpiar
 ```
 
 La separación entre `hands-on/` y `products/` es el asunto del taller. Todo lo primero es
@@ -57,38 +57,36 @@ saber nada de lo primero.
 > fork hasta aprovisionar un entorno y limpiar— con los tiempos y las salidas reales de cada
 > etapa. Unos 25 minutos.
 
-Requiere credenciales de AWS. Todo lo demás lo resuelve el script.
+Necesitas `terraform >= 1.5`, `go`, `python3`, `make`, `rsync` y credenciales de AWS.
 
 ```bash
-./scripts/bootstrap.sh 01
+# 1. Empaquetar las Lambdas. Terraform NO compila nada: archive_file lee build/
+#    en tiempo de plan, así que esto va SIEMPRE antes.
+cd hands-on/01-terraform-os/modules/engine/lambda-functions
+make bin
+
+# 2. Comprobar la arquitectura del binario Go.
+#    Un binario ARM se sube sin quejarse y falla al invocarse.
+make verify
+
+# 3. Desplegar
+cd ../../..
+cp terraform.tfvars.example terraform.tfvars   # y rellénalo
+terraform init
+terraform apply
 ```
 
-Comprueba las herramientas e instala las que falten, empaqueta las Lambdas, **verifica la
-arquitectura del binario Go** y aplica. Unos 4 minutos, 107 recursos.
+Unos 4 minutos, 107 recursos.
 
-Pensado para **AWS CloudShell**, donde las credenciales ya están puestas:
+**Solo una variable es obligatoria** — la pipeline lee de *tu* repositorio, así que necesitas
+un fork:
 
-```bash
-git clone https://github.com/8infinitecloud/devops-infraestructure-as-product.git
-cd devops-infraestructure-as-product
-./scripts/bootstrap.sh 01
+```hcl
+github_repository_id = "TU-USUARIO/devops-infraestructure-as-product"
 ```
 
-> No hay `curl … | bash` a propósito. Este repo predica en `buildspec/inspect.yml` que una
-> pipeline que audita seguridad no debería ejecutar scripts de una rama móvil.
-
-```bash
-./scripts/bootstrap.sh 01 plan      # ver qué haría
-./scripts/bootstrap.sh 01 destroy   # desmontar, con confirmación
-```
-
-La primera vez crea `terraform.tfvars` desde el ejemplo y te para para que lo rellenes.
-
-### Desde GitHub Actions
-
-Actions → **Desplegar en AWS**. Acepta OIDC (variable `AWS_DEPLOY_ROLE_ARN`) o claves
-(secrets `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`), y detecta cuál usar. El bucket del
-state y la tabla de bloqueo los crea el propio workflow.
+Para desmontar, `terraform destroy` — pero **antes** hay que terminar los productos
+aprovisionados. Ver [Limpieza](#limpieza).
 
 ### El paso que no se puede automatizar
 
@@ -201,7 +199,7 @@ destruye el motor primero, no queda nada capaz de ejecutar su `destroy`:
 
 ```bash
 aws servicecatalog terminate-provisioned-product --provisioned-product-id <pp-...>
-./scripts/bootstrap.sh 01 destroy
+terraform -chdir=hands-on/01-terraform-os destroy
 ```
 
 El producto de Service Catalog lo crea la pipeline por CLI, no Terraform, así que hay que
