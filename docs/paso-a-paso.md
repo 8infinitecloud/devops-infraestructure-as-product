@@ -294,6 +294,33 @@ Lo crea la pipeline con la CLI, no Terraform. Por eso hay que quitarlo aquí.
 terraform -chdir=hands-on/01-terraform-os destroy
 ```
 
+> **Si te saltaste el paso anterior, `destroy` falla así:**
+>
+> ```
+> Error: deleting Service Catalog Portfolio (port-...): ResourceInUseException:
+> Portfolio port-... still has associated Products
+> ```
+>
+> No es un error de Terraform: el producto **no es suyo**, lo creó la pipeline con la CLI,
+> así que no sabe que hay algo dentro del portfolio.
+>
+> El `destroy` se para limpio —borra todo lo demás y no deja nada a medias—, así que basta
+> con desasociar el producto y repetirlo. Los IDs salen de aquí:
+>
+> ```bash
+> PORTFOLIO=$(aws servicecatalog list-portfolios --query 'PortfolioDetails[0].Id' --output text)
+> PRODUCTO=$(aws servicecatalog search-products-as-admin --portfolio-id "$PORTFOLIO" \
+>              --query 'ProductViewDetails[0].ProductViewSummary.ProductId' --output text)
+> CONSTRAINT=$(aws servicecatalog list-constraints-for-portfolio --portfolio-id "$PORTFOLIO" \
+>              --query 'ConstraintDetails[0].ConstraintId' --output text)
+>
+> aws servicecatalog delete-constraint --id "$CONSTRAINT"
+> aws servicecatalog disassociate-product-from-portfolio --product-id "$PRODUCTO" --portfolio-id "$PORTFOLIO"
+> aws servicecatalog delete-product --id "$PRODUCTO"
+> ```
+>
+> Y repites el `destroy`.
+
 Queda fuera a propósito:
 
 - **La conexión de CodeConnections** — consérvala. Volver a autorizarla es manual.
