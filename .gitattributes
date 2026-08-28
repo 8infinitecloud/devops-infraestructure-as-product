@@ -27,8 +27,7 @@ go.sum        -diff
 
 # Que GitHub no cuente el codigo vendorizado como codigo del proyecto en las
 # estadisticas de lenguajes, ni lo saque en las busquedas por defecto.
-modules/hcp-terraform-engine/engine/lambda-functions/** linguist-vendored
-modules/terraform-os-engine/lambda-functions/**         linguist-vendored
+hands-on/01-terraform-os/modules/engine/lambda-functions/** linguist-vendored
 
 # Los .tf SI son el codigo del proyecto: forzamos que cuenten.
 *.tf          linguist-detectable

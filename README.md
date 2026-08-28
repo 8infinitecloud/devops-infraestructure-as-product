@@ -7,21 +7,25 @@ Un equipo pide un entorno desde la consola de AWS, rellena cuatro campos y lo ob
 Sin tener permisos sobre EC2 ni S3, sin escribir Terraform, y sin esperar a que alguien
 del equipo de plataforma le atienda.
 
+![Arquitectura](docs/arquitectura.png)
+
+Dos recorridos independientes sobre las mismas piezas:
+
+**Publicar** — un `git push` al módulo dispara CodePipeline vía CodeConnections. Valida,
+empaqueta el `.tar.gz`, lo sube a S3 y registra una versión nueva del producto en el
+catálogo.
+
+**Aprovisionar** — el usuario abre el asistente. Service Catalog invoca al *parameter
+parser* en Go, que descarga el artefacto y saca los campos del formulario de las `variable`
+del módulo. Al pulsar Launch, escribe en la cola SQS que corresponda —provision, update o
+terminate— y una Step Function orquesta el `terraform apply` en CodeBuild, con el state en
+su propio bucket. Al terminar, notifica el resultado y el tracer tag de vuelta.
+
 ```
-Usuario pulsa Launch en Service Catalog
-        │
-   Cola SQS  ──▶  Lambda  ──▶  Step Function
-                                    │
-                        ┌───────────▼────────────┐
-                        │  CodeBuild             │
-                        │   terraform init       │
-                        │   terraform plan       │
-                        │   ├─ Infracost         │  ← puerta de coste
-                        │   └─ ¿supera el tope?  │     aborta antes de crear nada
-                        │   terraform apply      │
-                        └───────────┬────────────┘
-                                    ▼
-                    Outputs → Service Catalog → el usuario
+        terraform init  →  plan -out  →  Infracost  →  apply tfplan
+                                            │
+                                    ¿supera el tope?
+                                    aborta antes de crear nada
 ```
 
 ## Qué hay aquí

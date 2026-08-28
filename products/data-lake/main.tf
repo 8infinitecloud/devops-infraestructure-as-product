@@ -13,9 +13,8 @@
 #      ▼
 #   ATHENA       SQL sobre los ficheros, sin moverlos
 #
-# NO declara `provider` ni `backend`: los pone quien ejecuta. En Service Catalog
-# el motor los inyecta; en un no-code module de HCP, la region va como variable
-# de entorno del workspace. Ver products/README.md.
+# NO declara `provider` ni `backend`: los inyecta el motor al aprovisionar, con
+# la region y el rol que correspondan. Ver products/README.md.
 # ---------------------------------------------------------------------------
 
 terraform {
@@ -290,7 +289,7 @@ resource "aws_athena_workgroup" "this" {
 # Invariantes del data lake
 #
 # Se evaluan en cada plan y apply, y ademas de forma PERIODICA si el workspace
-# tiene activada la continuous validation de HCP Terraform. Ahi esta su valor:
+# la plataforma reevalua el estado periodicamente. Ahi esta su valor:
 # no comprueban que el codigo este bien —de eso van los tests— sino que lo
 # desplegado SIGA cumpliendo semanas despues.
 #

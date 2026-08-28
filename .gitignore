@@ -47,7 +47,6 @@ lambda-functions/build/
 *.tar.gz
 # Excepciones: artefactos que SI se versionan porque son entrada de tests o del
 # ejemplo del motor, no salida de un build.
-!hands-on/02-hcp-terraform/modules/engine/example-product/product.tar.gz
 !hands-on/01-terraform-os/modules/engine/sample-provisioning-artifacts/*.tar.gz
 # Fixtures de los tests Go. Sin ellos, `go test` pasa en local (donde el fichero
 # esta en disco pero ignorado) y falla en un checkout limpio. Son ~44 KB en total.

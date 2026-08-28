@@ -1,23 +1,16 @@
-# ---------------------------------------------------------------------------
-# Este modulo sirve a los DOS motores. Lo unico que cambia entre ellos es el
-# tipo de producto:
-#
-#   EXTERNAL        -> motor Terraform OS. Enruta a las colas
-#                      ServiceCatalogExternal*OperationQueue.
-#   TERRAFORM_CLOUD -> motor de HCP Terraform. Enruta a las colas
-#                      ServiceCatalogTerraformCloud*OperationQueue.
-#
-# (TERRAFORM_OPEN_SOURCE existia hasta el 2023-12-14; AWS lo sustituyo por
-#  EXTERNAL y ya no se acepta en CreateProduct.)
-# ---------------------------------------------------------------------------
-
 variable "product_type" {
   type        = string
-  description = "Tipo de producto en Service Catalog"
+  description = <<-EOT
+    Tipo de producto en Service Catalog. Determina a que colas enruta el motor:
+    EXTERNAL va a las ServiceCatalogExternal*.
+
+    AWS retiro TERRAFORM_OPEN_SOURCE el 2023-12-14 en favor de EXTERNAL.
+  EOT
+  default     = "EXTERNAL"
 
   validation {
-    condition     = contains(["EXTERNAL", "TERRAFORM_CLOUD"], var.product_type)
-    error_message = "product_type debe ser EXTERNAL (motor Terraform OS) o TERRAFORM_CLOUD (motor HCP Terraform)."
+    condition     = var.product_type == "EXTERNAL"
+    error_message = "Solo se admite EXTERNAL."
   }
 }
 

@@ -2,9 +2,7 @@ version: 0.2
 
 # Publica TODOS los productos del catalogo en Service Catalog.
 #
-# PRODUCT_TYPE decide a que motor van:
-#   EXTERNAL        -> colas ServiceCatalogExternal*        (motor Terraform OS)
-#   TERRAFORM_CLOUD -> colas ServiceCatalogTerraformCloud*  (motor HCP Terraform)
+# PRODUCT_TYPE es EXTERNAL: enruta a las colas ServiceCatalogExternal* del motor.
 # AWS retiro TERRAFORM_OPEN_SOURCE el 2023-12-14 en favor de EXTERNAL.
 #
 # A diferencia de Validate, aqui NO se corta en el primer fallo. Validate ya

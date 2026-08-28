@@ -1,13 +1,12 @@
 # Propietario por defecto de todo el repo.
 *                                   @8infinitecloud
 
-# Codigo vendorizado de terceros (Apache-2.0 y MPL-2.0). Cualquier cambio aqui
-# se separa del codigo propio: ver NOTICE y las licencias de cada modulo.
-/modules/hcp-terraform-engine/       @8infinitecloud
-/modules/terraform-os-engine/        @8infinitecloud
+# Codigo vendorizado de AWS (Apache-2.0). Cualquier cambio aqui se separa del
+# codigo propio: ver NOTICE.
+/hands-on/01-terraform-os/modules/engine/  @8infinitecloud
 
 # Puertas de gobierno: politicas y pipeline. Tocarlas cambia lo que puede
 # publicarse en el catalogo.
 /policies/                           @8infinitecloud
-/modules/catalog-pipeline/           @8infinitecloud
+/hands-on/01-terraform-os/modules/catalog-pipeline/  @8infinitecloud
 /.github/                            @8infinitecloud

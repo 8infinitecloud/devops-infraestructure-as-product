@@ -62,7 +62,6 @@ etapa Inspect, encontrados desplegando" dice mas que "fix iam".
 
 ## Secretos
 
-Nunca commitees `.tfvars` con credenciales, tokens de HCP Terraform ni claves de
-API. `.gitignore` cubre los patrones habituales y Gitleaks pasa por el repo
+Nunca commitees `.tfvars` con credenciales ni claves de API. `.gitignore` cubre los patrones habituales y Gitleaks pasa por el repo
 entero en cada PR, pero ninguna de las dos cosas es una red de seguridad de la
 que fiarse.

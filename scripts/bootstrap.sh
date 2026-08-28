@@ -2,10 +2,9 @@
 #
 # Despliega un hands-on del taller en la cuenta de AWS que tengas configurada.
 #
-#   ./scripts/bootstrap.sh 01          # motor Terraform OS
-#   ./scripts/bootstrap.sh 02          # motor HCP Terraform (requiere TFE_TOKEN)
-#   ./scripts/bootstrap.sh 01 plan     # solo ver que haria
-#   ./scripts/bootstrap.sh 01 destroy  # desmontar
+#   ./scripts/bootstrap.sh            # desplegar
+#   ./scripts/bootstrap.sh plan       # solo ver que haria
+#   ./scripts/bootstrap.sh destroy    # desmontar
 #
 # Pensado para AWS CloudShell, donde las credenciales ya estan puestas y no hace
 # falta configurar nada. Funciona igual en macOS y en Linux.
@@ -28,8 +27,9 @@ TF_VERSION="${TF_VERSION:-1.5.7}"   # la misma que usa la pipeline
 LOCAL_BIN="${HOME}/.local/bin"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-HANDS_ON="${1:-}"
-ACTION="${2:-apply}"
+# Se acepta un "01" delante por compatibilidad con instrucciones antiguas.
+[ "${1:-}" = "01" ] && shift
+ACTION="${1:-apply}"
 
 # --- Presentacion ------------------------------------------------------------
 
@@ -46,30 +46,20 @@ fatal() { printf '\n%sERROR:%s %s\n\n' "${ROJO}" "${FIN}" "$*" >&2; exit 1; }
 
 # --- Argumentos --------------------------------------------------------------
 
-case "${HANDS_ON}" in
-  01) DIR="hands-on/01-terraform-os"
-      BUILD_DIR="hands-on/01-terraform-os/modules/engine/lambda-functions"
-      NOMBRE="Hands-on 1 — motor Terraform OS" ;;
-  02) DIR="hands-on/02-hcp-terraform"
-      BUILD_DIR="hands-on/02-hcp-terraform/modules/engine/engine/lambda-functions"
-      NOMBRE="Hands-on 2 — motor HCP Terraform" ;;
-  *)  cat >&2 <<EOF
-Uso: $0 <01|02> [apply|plan|destroy]
-
-  01   Motor Terraform OS   — el apply corre en CodeBuild, en tu cuenta
-  02   Motor HCP Terraform  — el apply corre en un workspace. Requiere TFE_TOKEN
-
-Ejemplos:
-  $0 01            Despliega el hands-on 1
-  $0 01 plan       Solo muestra que se crearia
-  $0 02 destroy    Desmonta el hands-on 2
-EOF
-      exit 2 ;;
-esac
+DIR="hands-on/01-terraform-os"
+BUILD_DIR="${DIR}/modules/engine/lambda-functions"
+NOMBRE="Catalogo de infraestructura sobre AWS Service Catalog"
 
 case "${ACTION}" in
   apply|plan|destroy) ;;
-  *) fatal "Accion no valida: '${ACTION}'. Usa apply, plan o destroy." ;;
+  *) cat >&2 <<EOF
+Uso: $0 [apply|plan|destroy]
+
+  apply     Despliega el motor, el catalogo y la pipeline  (por defecto)
+  plan      Solo muestra que se crearia
+  destroy   Desmonta. Termina antes los productos aprovisionados
+EOF
+     exit 2 ;;
 esac
 
 printf '\n%s%s%s\n' "${NEGRITA}" "${NOMBRE}  [${ACTION}]" "${FIN}"
@@ -153,10 +143,6 @@ export AWS_REGION="${region}" AWS_DEFAULT_REGION="${region}"
 ok "cuenta ${cuenta}, region ${region}"
 ok "${quien}"
 
-if [ "${HANDS_ON}" = "02" ] && [ -z "${TFE_TOKEN:-}" ] && [ ! -f "${HOME}/.terraform.d/credentials.tfrc.json" ]; then
-  fatal "El Hands-on 2 necesita un token de HCP Terraform.
-       export TFE_TOKEN=\"...\"   o   ~/.terraform.d/credentials.tfrc.json"
-fi
 
 # --- 3. Configuracion --------------------------------------------------------
 
@@ -169,7 +155,7 @@ if [ ! -f terraform.tfvars ]; then
     cp terraform.tfvars.example terraform.tfvars
     fatal "He creado ${DIR}/terraform.tfvars a partir del ejemplo.
        RELLENALO y vuelve a lanzar el script. Como minimo necesitas
-       github_repository_id (y tfc_organization en el Hands-on 2).
+       github_repository_id .
 
        Alternativa sin fichero:
          export TF_VAR_github_repository_id=\"mi-org/mi-repo\""
@@ -186,9 +172,7 @@ if [ "${ACTION}" != "destroy" ]; then
 
   # El chequeo que evita el fallo caro: un binario ARM subido a una Lambda que
   # declara x86_64 despliega sin quejarse y falla al invocarse.
-  if [ "${HANDS_ON}" = "01" ]; then
     ( cd "${REPO_ROOT}/${BUILD_DIR}" && make verify )
-  fi
   ok "artefactos listos"
 fi
 
