@@ -59,85 +59,6 @@ saber nada de lo primero.
 
 Necesitas `terraform >= 1.5`, `go`, `python3`, `make`, `rsync` y credenciales de AWS.
 
-```bash
-# 1. Empaquetar las Lambdas. Terraform NO compila nada: archive_file lee build/
-#    en tiempo de plan, así que esto va SIEMPRE antes.
-cd hands-on/01-terraform-os/modules/engine/lambda-functions
-make bin
-
-# 2. Comprobar la arquitectura del binario Go.
-#    Un binario ARM se sube sin quejarse y falla al invocarse.
-make verify
-
-# 3. Desplegar
-cd ../../..
-cp terraform.tfvars.example terraform.tfvars   # y rellénalo
-terraform init
-terraform apply
-```
-
-Unos 4 minutos, 107 recursos.
-
-**Solo una variable es obligatoria** — la pipeline lee de *tu* repositorio, así que necesitas
-un fork:
-
-```hcl
-github_repository_id = "TU-USUARIO/devops-infraestructure-as-product"
-```
-
-Para desmontar, `terraform destroy` — pero **antes** hay que terminar los productos
-aprovisionados. Ver [Limpieza](#limpieza).
-
-### El paso que no se puede automatizar
-
-**La autorización de CodeConnections.** Terraform crea la conexión en estado `PENDING` y el
-handshake OAuth no tiene API: hay que completarlo a mano, una vez.
-
-> Consola → CodePipeline → Settings → Connections → *Update pending connection*
-
-El script te avisa al terminar si queda pendiente. Por eso existe `existing_connection_arn`:
-una vez autorizada, se reutiliza.
-
-## Añadir un producto
-
-El catálogo son **datos**. Una entrada en el mapa y una carpeta:
-
-```hcl
-productos = {
-  standard-environment = { nombre = "Standard Environment", ruta = "products/standard-environment", ... }
-
-  data-lake = {                                    # ← el producto nuevo
-    nombre      = "Data Lake"
-    ruta        = "products/data-lake"
-    descripcion = "S3 por zonas, catálogo de Glue y Athena."
-  }
-}
-```
-
-`terraform apply` y ya. **No se crea infraestructura**: hay una sola pipeline para todo el
-catálogo y el mapa le llega como variable de entorno. Verificado con un plan — 107 recursos
-con un producto, 107 con dos.
-
-| Campo | Para qué | Cuidado |
-|---|---|---|
-| **clave** | Identificador interno; nombra el `.tar.gz` | — |
-| `nombre` | Cómo se ve en Service Catalog | Es la clave con la que Publish lo busca: cambiarlo crea uno **nuevo** en vez de versionar |
-| `ruta` | Dónde viven los `.tf` | Acaban en la **raíz** del `.tar.gz`; lo exige el parameter parser |
-
-> **Una pipeline para todos tiene un precio:** si la validación de un producto falla, no se
-> publica ninguno. Por eso `Validate` no se corta en el primer error — recorre el catálogo
-> entero y lista todo lo roto. `Publish` sí continúa, porque un error transitorio de la API
-> en el producto 3 no debe dejar sin publicar al 4.
-
-### Antes de añadir uno: mira el Launch Role
-
-Es el error más caro, porque aparece al final. El Launch Role está acotado a lo que
-necesitan los productos actuales. Uno que cree RDS o EKS **pasa validate, pasa publish, y
-falla al aprovisionar** — con el usuario ya delante del asistente.
-
-Se amplía en `data.aws_iam_policy_document.launch_role_permissions`, en
-`hands-on/01-terraform-os/modules/catalog-bootstrap/main.tf`.
-
 ## Gobierno del catálogo
 
 Dos puertas, en momentos distintos, y la distinción importa:
@@ -153,34 +74,6 @@ runner.
 
 Por eso `Inspect` es **advisory** — informa, y decide una persona en la aprobación manual.
 
-### La puerta de coste
-
-```hcl
-infracost_max_monthly_usd = "50"      # "0" = solo informa
-```
-
-El runner hace `plan -out=tfplan`, estima sobre ese plan, y si supera el tope **aborta antes
-de crear nada**. Luego aplica exactamente el plan que estimó.
-
-**Es fail-open a propósito.** Si hay límite pero la estimación falla —Infracost caído, key
-inválida—, continúa. La alternativa convertiría una caída de Infracost en una caída del
-catálogo entero. El coste es que la puerta se puede eludir rompiendo la herramienta, y por
-eso el aviso es ruidoso en el log.
-
-Requiere una API key gratuita en Secrets Manager, con formato `{"api_key":"ico-..."}`:
-
-```hcl
-infracost_api_key_secret_arn = "arn:aws:secretsmanager:...:secret:aurex/infracost-XXXXXX"
-```
-
-La clave **no pasa por el state**: CodeBuild la resuelve en ejecución.
-
-### Versiones fijadas a propósito
-
-Las herramientas de `Inspect` se instalan desde tarballs de release **con versión fijada**,
-no con `curl | sh` de un script en `master`. Una pipeline que audita seguridad no debería
-introducir el riesgo de cadena de suministro que se supone que detecta.
-
 ## Cuándo el catálogo tiene sentido
 
 No siempre. Merece la pena cuando:
@@ -191,19 +84,6 @@ No siempre. Merece la pena cuando:
 
 Si tu gente ya escribe Terraform y tiene acceso a una plataforma que ofrece formularios
 sobre módulos, el catálogo añade una capa sin darte nada.
-
-## Limpieza
-
-Siempre en orden inverso, y **terminando antes los productos aprovisionados** — si se
-destruye el motor primero, no queda nada capaz de ejecutar su `destroy`:
-
-```bash
-aws servicecatalog terminate-provisioned-product --provisioned-product-id <pp-...>
-terraform -chdir=hands-on/01-terraform-os destroy
-```
-
-El producto de Service Catalog lo crea la pipeline por CLI, no Terraform, así que hay que
-borrarlo aparte: constraint → desasociar → `delete-product`.
 
 ## Multicuenta
 

@@ -1,7 +1,7 @@
 # Guía paso a paso
 
 Desde clonar el repositorio hasta ver un entorno aprovisionado y volver a dejar la cuenta
-limpia. Los tiempos y las salidas son los de una ejecución real, no estimaciones.
+limpia.
 
 Total: **unos 25 minutos**, de los cuales 10 son esperas.
 
@@ -34,9 +34,6 @@ git remote -v
 ```bash
 terraform version && go version && python3 --version && aws sts get-caller-identity
 ```
-
-> **En AWS CloudShell** ya tienes credenciales, `python3`, `git` y `make`. Faltan Terraform y
-> Go, que se instalan desde sus tarballs de release en un par de minutos.
 
 ---
 
@@ -75,9 +72,7 @@ make bin
 make verify
 ```
 
-`make verify` comprueba que el binario Go quedó en **x86-64**. No es paranoia: en un Mac con
-Apple Silicon, un `GOARCH` mal puesto produce un binario ARM que Terraform sube sin quejarse
-y que revienta al invocarse. El repo original traía ese fallo.
+`make verify` comprueba que el binario Go quedó en **x86-64**.
 
 ```
 OK: x86-64, coincide con architectures del aws_lambda_function
@@ -104,26 +99,26 @@ Si algo falla aquí suele ser por permisos IAM. El mensaje de AWS dice qué acci
 
 ---
 
-## 3 · Autorizar la conexión a GitHub — 1 min, y es manual
+## 3 · La conexión a GitHub — en consola
 
-**Este paso no se puede automatizar.** El handshake OAuth no tiene API.
+**No se puede automatizar.** El handshake OAuth con GitHub no tiene API: la conexión nace
+en estado `PENDING` y alguien tiene que autorizarla a mano.
 
-Comprueba si te hace falta:
+> Consola → **CodePipeline** → Settings → **Connections**
+>
+> 1. Selecciona la conexión pendiente
+> 2. *Update pending connection*
+> 3. Autoriza la app **AWS Connector for GitHub** y dale acceso a tu fork
+> 4. El estado pasa a **`Available`**
 
-```bash
-aws codeconnections list-connections \
-  --query 'Connections[].{nombre:ConnectionName,estado:ConnectionStatus}' --output table
+Copia su ARN y guárdalo en `terraform.tfvars`:
+
+```hcl
+existing_connection_arn = "arn:aws:codeconnections:us-east-1:TU-CUENTA:connection/..."
 ```
 
-Si sale `PENDING`:
-
-> Consola → CodePipeline → **Settings → Connections** → selecciona la pendiente →
-> *Update pending connection* → autoriza la app **AWS Connector for GitHub**
-
-Una vez hecho, guarda el ARN en tu `terraform.tfvars` como `existing_connection_arn`. Los
-siguientes despliegues la reutilizan y este paso desaparece.
-
----
+A partir de ahí se reutiliza y **este paso no vuelve a aparecer**. Sin él, cada `destroy` y
+`apply` crearía una conexión nueva que habría que autorizar otra vez.
 
 ## 4 · La pipeline arranca sola — 6 min
 
@@ -268,25 +263,41 @@ un producto y 107 con dos.
 ## 10 · Limpiar
 
 **El orden importa.** Si destruyes el motor primero, no queda nada capaz de ejecutar el
-`destroy` de los productos, y sus recursos quedan huérfanos pagando.
+`destroy` de los productos: sus recursos quedan huérfanos en la cuenta, pagando y sin nada
+que los gestione.
+
+### Primero, en la consola de Service Catalog
+
+Esta parte es manual. Los productos aprovisionados y el producto del catálogo **no están en
+Terraform**, así que `destroy` no se los lleva.
+
+> **1. Terminar lo aprovisionado**
+>
+> Service Catalog → **Provisioned products** → cada uno → *Actions* → **Terminate**
+>
+> Espera a que desaparezcan. Es lo que dispara el `destroy` de sus recursos a través del
+> motor, y por eso el motor tiene que seguir vivo.
+
+> **2. Quitar el producto del catálogo**
+>
+> Service Catalog → **Portfolios** → *Aurex Standard Environments*
+>
+> - Pestaña **Constraints** → borra el *Launch constraint*
+> - Pestaña **Products** → *Remove product* del portfolio
+> - Después, Service Catalog → **Products** → borra el producto
+
+Lo crea la pipeline con la CLI, no Terraform. Por eso hay que quitarlo aquí.
+
+### Después, el resto
 
 ```bash
-# 1. Terminar los productos aprovisionados
-aws servicecatalog terminate-provisioned-product --provisioned-product-id <pp-...>
-
-# 2. Borrar el producto del catálogo — no está en Terraform
-aws servicecatalog delete-constraint --id <cons-...>
-aws servicecatalog disassociate-product-from-portfolio --product-id <prod-...> --portfolio-id <port-...>
-aws servicecatalog delete-product --id <prod-...>
-
-# 3. Ahora sí
 terraform -chdir=hands-on/01-terraform-os destroy
 ```
 
-Queda fuera del `destroy`: el secreto de Infracost si lo creaste, y la conexión de
-CodeConnections —que conviene conservar, porque volver a autorizarla es manual.
+Queda fuera a propósito:
 
----
+- **La conexión de CodeConnections** — consérvala. Volver a autorizarla es manual.
+- **El secreto de Infracost**, si lo creaste.
 
 ## Qué cuesta si lo dejas puesto
 
